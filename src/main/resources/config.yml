@@ -1,0 +1,65 @@
+# =========================================
+# SOYSMyLoot 主配置文件
+# 战利品插件 —— 根据玩家对配置怪物造成的伤害/击杀，发放奖励
+# =========================================
+
+# 调试模式：开启后会在控制台输出详细追踪与存储读写日志
+debug: false
+
+# 自动保存间隔（秒）。0 = 关闭自动保存（仅在插件关闭/玩家退出时保存）
+auto-save: 300
+
+# 伤害追踪设置
+tracking:
+  # 是否追踪由玩家发射的投射物（箭、雪球、火球等）造成的伤害
+  projectile: true
+  # 是否追踪由玩家间接造成的伤害（火焰、掉落、窒息、药水持续伤害等）
+  # 注意：间接伤害来源判定较复杂，开启后可能产生误判，默认关闭
+  indirect: false
+
+# =========================================
+# 数据存储
+# ----------------------------------------------------------------------------
+# 三种后端可同时开启，优先级固定为：MYSQL > SQLITE > YAML
+# 已启用的后端中优先级最高者为「主存储」，承担全部读操作；
+# 其余启用的后端作为「辅助存储」，写入时被镜像同步，充当热备份与降级方案。
+# 例：同时开启 mysql 与 yaml -> MySQL 为主库，yaml 自动保持一份本地副本。
+# =========================================
+storage:
+  backends:
+    # ---------- YAML（零依赖，可作为辅助镜像或小型服主存储） ----------
+    yaml:
+      enabled: false
+      # 数据文件路径，相对于 plugins/SOYSMyLoot/
+      file: data/players.yml
+      # 是否在每次写入前生成 .bak 备份
+      backup-on-save: false
+
+    # ---------- SQLite（默认启用，单文件数据库） ----------
+    sqlite:
+      enabled: true
+      # 数据库文件路径，相对于 plugins/SOYSMyLoot/
+      file: data/players.db
+      # 表名前缀，避免与其他插件冲突
+      table-prefix: 'mc_sml_'
+
+    # ---------- MySQL（启用后自动成为主存储） ----------
+    # 仅需下方精简字段，URL 直接用于建立并测试连接
+    mysql:
+      enabled: false
+      # 完整 JDBC 连接串，驱动会通过 url 自动识别连接参数
+      url: 'jdbc:mysql://localhost:3306/soysmyloot?useUnicode=true&characterEncoding=utf8&autoReconnect=true&useSSL=false&serverTimezone=Asia/Shanghai'
+      username: root
+      password: ''
+      table-prefix: 'mc_sml_'
+      # 连接保活探测间隔（秒），防止长时间空闲被服务端断开。0 = 关闭
+      keepalive-interval: 1800
+
+  # ---------- 辅助存储镜像写入 ----------
+  mirror:
+    # 是否把写操作镜像到所有辅助存储
+    enabled: true
+    # 镜像写入是否异步执行（推荐 true，避免阻塞主线程）
+    async: true
+    # 插件启动时，是否用主存储的数据全量覆盖辅助存储
+    sync-on-startup: false

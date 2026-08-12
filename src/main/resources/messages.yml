@@ -1,0 +1,51 @@
+# =========================================
+# SOYSMyLoot 消息配置
+# =========================================
+# 支持占位符替换，格式为 {key}：
+#   {prefix}   前缀
+#   {id}       奖励/怪物 ID
+#   {name}     奖励显示名
+#   {monsters} 已加载怪物数量
+#   {rewards}  已加载奖励数量
+#   {time}     剩余冷却秒数
+#   {damage}   累计伤害
+#   {kills}    击杀数
+#   {command}  指令
+#   {description} 指令描述
+#   {version}  插件版本
+# 颜色代码使用 & 符号（&a 绿 &c 红 &e 黄 &6 金 &7 灰 &b 蓝 &8 深灰 &r 重置 &m 删除线）
+
+prefix: "&8[&6战利品&8]&r "
+
+no-permission: "{prefix}&c你没有权限执行此操作！"
+player-only: "{prefix}&c该指令只能由玩家执行！"
+unknown-command: "{prefix}&c未知指令，使用 &e/myloot help &c查看帮助"
+config-reloaded: "{prefix}&a配置已重新加载！共加载 &e{monsters} &a个怪物，&e{rewards} &a个奖励。"
+no-data: "{prefix}&c暂无数据"
+
+reward-not-found: "{prefix}&c找不到ID为 &e{id} &c的奖励！"
+reward-claimed: "{prefix}&c你已经领取过该奖励了！"
+reward-cooldown: "{prefix}&c该奖励正在冷却中，还需等待 &e{time} &c秒！"
+reward-conditions-not-met: "{prefix}&c你还不满足领取条件！"
+reward-claimed-success: "{prefix}&a成功领取奖励 &e{name}&a！"
+
+list-header: "{prefix}&6&m                      &r &e可领取奖励 &6&m                      "
+list-item-available: "&a[✔] &e{id} &7- &f{name}"
+list-item-claimed: "&c[✘] &e{id} &7- &f{name} &8(已领取)"
+list-item-locked: "&7[✘] &e{id} &7- &f{name} &8(未达成)"
+list-empty: "{prefix}&c当前没有任何奖励配置。"
+list-footer: "&6&m                                                                      "
+
+progress-header: "{prefix}&6&m                      &r &e进度信息 &6&m                      "
+progress-item: "&e{monster}&7: 伤害 &a{damage} &7| 击杀 &a{kills}"
+progress-footer: "&6&m                                                                      "
+
+help-header: "{prefix}&6&m                      &r &eSOYSMyLoot 帮助 &6&m                      "
+help-line: "&e/{command} &7- {description}"
+help-footer: "&6&m                                                                      "
+
+info: "&7插件: &eSOYSMyLoot &7| 版本: &e{version} &7| 作者: &eSoys"
+info-database: "&7数据库: &e{db} &7| 已追踪: &e{monsters} &7怪物 &e{rewards} &7奖励"
+
+warn-no-vault: "{prefix}&c经济奖励发放失败：未安装 Vault 或经济插件"
+warn-no-playerpoints: "{prefix}&c点券奖励发放失败：未安装 PlayerPoints"

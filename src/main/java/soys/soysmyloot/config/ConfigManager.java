@@ -1,0 +1,279 @@
+package soys.soysmyloot.config;
+
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.LivingEntity;
+import org.bukkit.plugin.java.JavaPlugin;
+import soys.soysmyloot.model.MonsterEntry;
+import soys.soysmyloot.model.RewardEntry;
+import soys.soysmyloot.storage.StorageType;
+import soys.soysmyloot.util.Text;
+
+import java.io.File;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 配置管理器：负责加载、重载全部配置文件（config / monsters / rewards / messages），
+ * 并暴露存储后端的查询方法（供 storage 包使用）。
+ */
+public class ConfigManager {
+
+    private final JavaPlugin plugin;
+
+    // ---- config.yml 原始对象（保留供 storage 后端读取 storage.backends.*）----
+    private YamlConfiguration rawConfig;
+
+    // ---- config.yml ----
+    private boolean debug;
+    private int autoSave;
+    private boolean trackProjectile;
+    private boolean trackIndirect;
+
+    // ---- monsters.yml / rewards.yml ----
+    private final Map<String, MonsterEntry> monsters = new HashMap<>();
+    private final Map<String, RewardEntry> rewards = new HashMap<>();
+
+    // ---- messages.yml ----
+    private YamlConfiguration messages;
+
+    public ConfigManager(JavaPlugin plugin) {
+        this.plugin = plugin;
+    }
+
+    /** 加载全部配置 */
+    public void loadAll() {
+        loadSettings();
+        loadMonsters();
+        loadRewards();
+        loadMessages();
+    }
+
+    // ============ 内部加载 ============
+
+    private YamlConfiguration loadResource(String fileName) {
+        File file = new File(plugin.getDataFolder(), fileName);
+        if (!file.exists()) {
+            plugin.saveResource(fileName, false);
+        }
+        return YamlConfiguration.loadConfiguration(file);
+    }
+
+    private void loadSettings() {
+        this.rawConfig = loadResource("config.yml");
+        debug = rawConfig.getBoolean("debug", false);
+        autoSave = rawConfig.getInt("auto-save", 300);
+
+        ConfigurationSection ts = rawConfig.getConfigurationSection("tracking");
+        trackProjectile = ts != null ? ts.getBoolean("projectile", true) : true;
+        trackIndirect = ts != null ? ts.getBoolean("indirect", false) : false;
+    }
+
+    private void loadMonsters() {
+        monsters.clear();
+        YamlConfiguration cfg = loadResource("monsters.yml");
+        ConfigurationSection section = cfg.getConfigurationSection("monsters");
+        if (section == null) {
+            return;
+        }
+        for (String id : section.getKeys(false)) {
+            ConfigurationSection m = section.getConfigurationSection(id);
+            if (m == null) {
+                continue;
+            }
+            String typeStr = m.getString("type", "ZOMBIE").toUpperCase();
+            EntityType type;
+            try {
+                type = EntityType.valueOf(typeStr);
+            } catch (IllegalArgumentException e) {
+                plugin.getLogger().warning("怪物 '" + id + "' 的 type 无效: " + typeStr + "，已跳过");
+                continue;
+            }
+            String name = m.getString("name", "");
+            String display = m.getString("display-name", id);
+            monsters.put(id, new MonsterEntry(id, type, name, display));
+        }
+    }
+
+    private void loadRewards() {
+        rewards.clear();
+        YamlConfiguration cfg = loadResource("rewards.yml");
+        ConfigurationSection section = cfg.getConfigurationSection("rewards");
+        if (section == null) {
+            return;
+        }
+        for (String id : section.getKeys(false)) {
+            ConfigurationSection r = section.getConfigurationSection(id);
+            if (r == null) {
+                continue;
+            }
+            String name = r.getString("name", id);
+            String desc = r.getString("description", "");
+            boolean repeatable = r.getBoolean("repeatable", false);
+            long cooldown = r.getLong("cooldown", 0);
+
+            // ---- 条件 ----
+            List<RewardEntry.Condition> conditions = new ArrayList<>();
+            ConfigurationSection condSection = r.getConfigurationSection("conditions");
+            if (condSection != null) {
+                for (String ck : condSection.getKeys(false)) {
+                    ConfigurationSection c = condSection.getConfigurationSection(ck);
+                    if (c == null) {
+                        continue;
+                    }
+                    try {
+                        RewardEntry.ConditionType ct = RewardEntry.ConditionType.valueOf(
+                                c.getString("type", "DAMAGE").toUpperCase());
+                        String monsterId = c.getString("monster", "");
+                        double amount = c.getDouble("amount", 0);
+                        conditions.add(new RewardEntry.Condition(ct, monsterId, amount));
+                    } catch (IllegalArgumentException e) {
+                        plugin.getLogger().warning("奖励 '" + id + "' 的条件 '" + ck + "' type 无效，已跳过");
+                    }
+                }
+            }
+
+            // ---- 物品 ----
+            List<RewardEntry.ItemReward> items = new ArrayList<>();
+            ConfigurationSection itemsSection = r.getConfigurationSection("rewards.items");
+            if (itemsSection != null) {
+                for (String ik : itemsSection.getKeys(false)) {
+                    ConfigurationSection i = itemsSection.getConfigurationSection(ik);
+                    if (i == null) {
+                        continue;
+                    }
+                    String matStr = i.getString("material", "STONE").toUpperCase();
+                    org.bukkit.Material material;
+                    try {
+                        material = org.bukkit.Material.valueOf(matStr);
+                    } catch (IllegalArgumentException e) {
+                        plugin.getLogger().warning("奖励 '" + id + "' 的物品 '" + ik + "' material 无效: " + matStr + "，已跳过");
+                        continue;
+                    }
+                    int amount = i.getInt("amount", 1);
+                    String itemName = i.getString("name", "");
+                    List<String> lore = i.getStringList("lore");
+                    items.add(new RewardEntry.ItemReward(material, amount, itemName, lore));
+                }
+            }
+
+            // ---- 指令 / 金钱 / 点券 / 消息 ----
+            List<String> commands = r.getStringList("rewards.commands");
+            double money = r.getDouble("rewards.money", 0);
+            double points = r.getDouble("rewards.points", 0);
+            List<String> messagesList = r.getStringList("rewards.messages");
+
+            rewards.put(id, new RewardEntry(id, name, desc, conditions, repeatable, cooldown,
+                    items, commands, money, points, messagesList));
+        }
+    }
+
+    private void loadMessages() {
+        messages = loadResource("messages.yml");
+    }
+
+    // ============ 通用 ============
+
+    public boolean isDebug() {
+        return debug;
+    }
+
+    public int getAutoSave() {
+        return autoSave;
+    }
+
+    public boolean isTrackProjectile() {
+        return trackProjectile;
+    }
+
+    public boolean isTrackIndirect() {
+        return trackIndirect;
+    }
+
+    // ============ 存储后端 ============
+
+    public boolean isBackendEnabled(String backendId) {
+        return rawConfig.getBoolean("storage.backends." + backendId + ".enabled", false);
+    }
+
+    public ConfigurationSection getBackendSection(String backendId) {
+        return rawConfig.getConfigurationSection("storage.backends." + backendId);
+    }
+
+    public boolean isMirrorEnabled() {
+        return rawConfig.getBoolean("storage.mirror.enabled", true);
+    }
+
+    public boolean isMirrorAsync() {
+        return rawConfig.getBoolean("storage.mirror.async", true);
+    }
+
+    public boolean isSyncOnStartup() {
+        return rawConfig.getBoolean("storage.mirror.sync-on-startup", false);
+    }
+
+    /**
+     * 按配置启用的后端计算主存储 id（优先级：mysql &gt; sqlite &gt; yaml）。
+     * 用于 /myloot info 等信息展示。
+     */
+    public String getPrimaryBackendId() {
+        String best = "sqlite";
+        int bestPriority = -1;
+        for (StorageType type : StorageType.values()) {
+            if (isBackendEnabled(type.getId()) && type.getPriority() > bestPriority) {
+                bestPriority = type.getPriority();
+                best = type.getId();
+            }
+        }
+        return best;
+    }
+
+    // ============ 怪物 / 奖励 ============
+
+    public Map<String, MonsterEntry> getMonsters() {
+        return monsters;
+    }
+
+    public MonsterEntry getMonster(String id) {
+        return monsters.get(id);
+    }
+
+    /** 根据实体匹配并返回对应的怪物配置（无则 null） */
+    public MonsterEntry getMonster(LivingEntity entity) {
+        for (MonsterEntry m : monsters.values()) {
+            if (m.matches(entity)) {
+                return m;
+            }
+        }
+        return null;
+    }
+
+    public Map<String, RewardEntry> getRewards() {
+        return rewards;
+    }
+
+    public RewardEntry getReward(String id) {
+        return rewards.get(id);
+    }
+
+    /** 获取消息并替换占位符（含 {prefix}） */
+    public String msg(String key, Map<String, String> placeholders) {
+        if (messages == null) {
+            return key;
+        }
+        String raw = messages.getString(key, key);
+        Map<String, String> all = new HashMap<>();
+        all.put("prefix", messages.getString("prefix", ""));
+        if (placeholders != null) {
+            all.putAll(placeholders);
+        }
+        return Text.format(raw, all);
+    }
+
+    public String msg(String key) {
+        return msg(key, null);
+    }
+}

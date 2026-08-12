@@ -1,0 +1,50 @@
+# =========================================
+# SOYSMyLoot 奖励配置
+# =========================================
+# 在此定义玩家达到条件后可领取的奖励。
+# 领取指令：/myloot claim <奖励ID>
+# 条件（conditions）需全部满足才能领取。
+
+rewards:
+  # ---------- 奖励ID（唯一，指令与占位符通过它引用）----------
+  example_reward:
+    # 显示名称（支持 & 颜色代码）
+    name: "&a新手猎人奖励"
+    # 奖励描述（支持 & 颜色代码）
+    description: "&7对示例僵尸累计造成 1000 点伤害并击杀 5 只"
+
+    # 领取条件（需全部满足）
+    conditions:
+      # 条件类型：DAMAGE = 对该怪物累计造成的伤害；KILLS = 对该怪物的击杀数
+      - type: DAMAGE
+        monster: example_zombie      # 关联 monsters.yml 中的怪物ID
+        amount: 1000                 # 需要达到的数值
+      - type: KILLS
+        monster: example_zombie
+        amount: 5
+
+    # 是否可重复领取（true = 可领取多次；false = 仅一次）
+    repeatable: false
+    # 冷却时间（秒）。repeatable 为 true 且 cooldown > 0 时，两次领取之间需等待该时长；0 = 无冷却
+    cooldown: 0
+
+    # 奖励内容
+    rewards:
+      # 物品奖励（可多个）
+      items:
+        - material: DIAMOND          # 物品类型，需与 org.bukkit.Material 枚举名一致
+          amount: 1                  # 数量
+          name: "&b猎人钻石"          # 自定义名称（支持颜色代码）
+          lore:                      # 物品 Lore（支持颜色代码）
+            - "&7来自 SOYSMyLoot"
+            - "&7新手猎人奖励"
+      # 控制台执行的指令（支持 %player% 占位符，自动替换为玩家名）
+      commands:
+        - "give %player% golden_apple 3"
+      # 金钱奖励（需要 Vault 及对应经济插件）
+      money: 1000
+      # 点券奖励（需要 PlayerPoints 插件）
+      points: 100
+      # 领取后发给玩家的消息（支持颜色代码）
+      messages:
+        - "&a恭喜你获得了新手猎人奖励！"
