@@ -25,6 +25,13 @@ public class PlayerData {
     private final Map<String, Integer> killMap = new HashMap<>();
     private final Map<String, Long> lastClaimMap = new HashMap<>();    // 奖励ID -> 上次领取时间(epoch秒)
     private final Map<String, Integer> claimCountMap = new HashMap<>(); // 奖励ID -> 已领取次数
+    // ---- 累计在线时长（分钟），独立于进度/领取，按玩家自身 UUID 记录 ----
+    private long onlineMinutes;
+    // ---- 每日 / 每周领取计数（与周期起点一起用于跨周期自动重置）----
+    private final Map<String, Integer> dailyClaimCountMap = new HashMap<>();
+    private final Map<String, Long> dailyClaimStartMap = new HashMap<>();
+    private final Map<String, Integer> weeklyClaimCountMap = new HashMap<>();
+    private final Map<String, Long> weeklyClaimStartMap = new HashMap<>();
     private boolean dirty = false;
 
     public PlayerData(UUID uuid) {
@@ -145,6 +152,131 @@ public class PlayerData {
         claimCountMap.put(rewardId, v);
     }
 
+    // ================================================================
+    //  累计在线时长（分钟）
+    // ================================================================
+
+    public long getOnlineMinutes() {
+        return onlineMinutes;
+    }
+
+    public void setOnlineMinutes(long v) {
+        onlineMinutes = v;
+        dirty = true;
+    }
+
+    public void addOnlineMinutes(long v) {
+        if (v > 0) {
+            onlineMinutes += v;
+            dirty = true;
+        }
+    }
+
+    // ================================================================
+    //  每日 / 每周领取计数
+    // ================================================================
+
+    /** 当前周期内已领取次数（自动处理跨天/跨周重置） */
+    public int getDailyClaimed(String rewardId) {
+        long now = System.currentTimeMillis() / 1000;
+        long todayStart = dayStartEpoch(now);
+        if (dailyClaimStartMap.getOrDefault(rewardId, 0L) < todayStart) {
+            dailyClaimCountMap.put(rewardId, 0);
+            dailyClaimStartMap.put(rewardId, todayStart);
+        }
+        return dailyClaimCountMap.getOrDefault(rewardId, 0);
+    }
+
+    public int getWeeklyClaimed(String rewardId) {
+        long now = System.currentTimeMillis() / 1000;
+        long weekStart = weekStartEpoch(now);
+        if (weeklyClaimStartMap.getOrDefault(rewardId, 0L) < weekStart) {
+            weeklyClaimCountMap.put(rewardId, 0);
+            weeklyClaimStartMap.put(rewardId, weekStart);
+        }
+        return weeklyClaimCountMap.getOrDefault(rewardId, 0);
+    }
+
+    /** 增加一次每日领取计数（必要时先重置周期） */
+    public void addDailyClaim(String rewardId, long nowEpochSeconds) {
+        long todayStart = dayStartEpoch(nowEpochSeconds);
+        if (dailyClaimStartMap.getOrDefault(rewardId, 0L) < todayStart) {
+            dailyClaimCountMap.put(rewardId, 0);
+            dailyClaimStartMap.put(rewardId, todayStart);
+        }
+        dailyClaimCountMap.put(rewardId, dailyClaimCountMap.getOrDefault(rewardId, 0) + 1);
+        dirty = true;
+    }
+
+    public void addWeeklyClaim(String rewardId, long nowEpochSeconds) {
+        long weekStart = weekStartEpoch(nowEpochSeconds);
+        if (weeklyClaimStartMap.getOrDefault(rewardId, 0L) < weekStart) {
+            weeklyClaimCountMap.put(rewardId, 0);
+            weeklyClaimStartMap.put(rewardId, weekStart);
+        }
+        weeklyClaimCountMap.put(rewardId, weeklyClaimCountMap.getOrDefault(rewardId, 0) + 1);
+        dirty = true;
+    }
+
+    public void setDailyClaim(String rewardId, int count, long start) {
+        dailyClaimCountMap.put(rewardId, count);
+        dailyClaimStartMap.put(rewardId, start);
+    }
+
+    public void setWeeklyClaim(String rewardId, int count, long start) {
+        weeklyClaimCountMap.put(rewardId, count);
+        weeklyClaimStartMap.put(rewardId, start);
+    }
+
+    /** 当日 0 点（服务器本地时区）的 epoch 秒 */
+    private static long dayStartEpoch(long nowSec) {
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.setTimeInMillis(nowSec * 1000L);
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0);
+        cal.set(java.util.Calendar.MINUTE, 0);
+        cal.set(java.util.Calendar.SECOND, 0);
+        cal.set(java.util.Calendar.MILLISECOND, 0);
+        return cal.getTimeInMillis() / 1000L;
+    }
+
+    /** 本周一 0 点（服务器本地时区）的 epoch 秒 */
+    private static long weekStartEpoch(long nowSec) {
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+        cal.setTimeInMillis(nowSec * 1000L);
+        int dow = cal.get(java.util.Calendar.DAY_OF_WEEK); // 1=周日 .. 7=周六
+        int daysSinceMonday = (dow + 5) % 7;                // 周一=0
+        cal.add(java.util.Calendar.DATE, -daysSinceMonday);
+        cal.set(java.util.Calendar.HOUR_OF_DAY, 0);
+        cal.set(java.util.Calendar.MINUTE, 0);
+        cal.set(java.util.Calendar.SECOND, 0);
+        cal.set(java.util.Calendar.MILLISECOND, 0);
+        return cal.getTimeInMillis() / 1000L;
+    }
+
+    // ================================================================
+    //  重置
+    // ================================================================
+
+    /** 清空全部进度（伤害/击杀），保留领取记录。赛季重置（保留领取）时调用 */
+    public void clearProgress() {
+        damageMap.clear();
+        killMap.clear();
+        dirty = true;
+    }
+
+    /** 清空全部数据（进度 + 领取）。赛季完全重置时调用 */
+    public void clearAll() {
+        damageMap.clear();
+        killMap.clear();
+        lastClaimMap.clear();
+        claimCountMap.clear();
+        dailyClaimCountMap.clear();
+        dailyClaimStartMap.clear();
+        weeklyClaimCountMap.clear();
+        weeklyClaimStartMap.clear();
+        dirty = true;
+    }
+
     public Map<String, Double> getDamageMap() {
         return damageMap;
     }
@@ -159,5 +291,21 @@ public class PlayerData {
 
     public Map<String, Integer> getClaimCountMap() {
         return claimCountMap;
+    }
+
+    public Map<String, Integer> getDailyClaimCountMap() {
+        return dailyClaimCountMap;
+    }
+
+    public Map<String, Long> getDailyClaimStartMap() {
+        return dailyClaimStartMap;
+    }
+
+    public Map<String, Integer> getWeeklyClaimCountMap() {
+        return weeklyClaimCountMap;
+    }
+
+    public Map<String, Long> getWeeklyClaimStartMap() {
+        return weeklyClaimStartMap;
     }
 }

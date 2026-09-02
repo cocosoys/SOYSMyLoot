@@ -1,5 +1,6 @@
 package soys.soysmyloot.config;
 
+import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.EntityType;
@@ -32,6 +33,20 @@ public class ConfigManager {
     private int autoSave;
     private boolean trackProjectile;
     private boolean trackIndirect;
+
+    // ---- 进度归属 / 世界隔离 ----
+    private String scopeId;
+    private boolean worldIsolation;
+
+    // ---- 排行榜 ----
+    private int leaderboardLimit;
+    private boolean leaderboardByDamage;
+    private int leaderboardRefreshSeconds;
+
+    // ---- 赛季重置 ----
+    private boolean seasonAutoReset;
+    private int seasonPeriodHours;
+    private boolean seasonKeepClaims;
 
     // ---- monsters.yml / rewards.yml ----
     private final Map<String, MonsterEntry> monsters = new HashMap<>();
@@ -70,6 +85,19 @@ public class ConfigManager {
         ConfigurationSection ts = rawConfig.getConfigurationSection("tracking");
         trackProjectile = ts != null ? ts.getBoolean("projectile", true) : true;
         trackIndirect = ts != null ? ts.getBoolean("indirect", false) : false;
+        scopeId = ts != null ? ts.getString("scope", "player").toLowerCase() : "player";
+        worldIsolation = ts != null ? ts.getBoolean("world-isolation", true) : true;
+
+        ConfigurationSection lb = rawConfig.getConfigurationSection("leaderboard");
+        leaderboardLimit = lb != null ? lb.getInt("limit", 10) : 10;
+        String lbOrder = lb != null ? lb.getString("order", "damage").toLowerCase() : "damage";
+        leaderboardByDamage = !"kills".equals(lbOrder);
+        leaderboardRefreshSeconds = lb != null ? lb.getInt("refresh-seconds", 60) : 60;
+
+        ConfigurationSection ss = rawConfig.getConfigurationSection("season");
+        seasonAutoReset = ss != null ? ss.getBoolean("auto-reset", false) : false;
+        seasonPeriodHours = ss != null ? ss.getInt("period-hours", 168) : 168;
+        seasonKeepClaims = ss != null ? ss.getBoolean("keep-claims", true) : true;
     }
 
     private void loadMonsters() {
@@ -129,7 +157,37 @@ public class ConfigManager {
                                 c.getString("type", "DAMAGE").toUpperCase());
                         String monsterId = c.getString("monster", "");
                         double amount = c.getDouble("amount", 0);
-                        conditions.add(new RewardEntry.Condition(ct, monsterId, amount));
+
+                        Material itemMaterial = null;
+                        int itemData = -1;
+                        int startMin = -1;
+                        int endMin = -1;
+                        List<Integer> days = null;
+
+                        if (ct == RewardEntry.ConditionType.HAS_ITEM) {
+                            String matStr = c.getString("material", "").toUpperCase();
+                            try {
+                                itemMaterial = Material.valueOf(matStr);
+                            } catch (IllegalArgumentException e) {
+                                plugin.getLogger().warning("奖励 '" + id + "' 的条件 '" + ck
+                                        + "' material 无效: " + matStr + "，已跳过");
+                                continue;
+                            }
+                            itemData = c.getInt("data", -1);
+                        } else if (ct == RewardEntry.ConditionType.TIME) {
+                            startMin = parseTime(c.getString("start"));
+                            endMin = parseTime(c.getString("end"));
+                            if (startMin < 0 || endMin < 0) {
+                                plugin.getLogger().warning("奖励 '" + id + "' 的条件 '" + ck
+                                        + "' 缺少有效的 start/end 时间，已跳过");
+                                continue;
+                            }
+                            List<Integer> dayList = c.getIntegerList("days");
+                            days = dayList.isEmpty() ? null : dayList;
+                        }
+
+                        conditions.add(new RewardEntry.Condition(ct, monsterId, amount,
+                                itemMaterial, itemData, startMin, endMin, days));
                     } catch (IllegalArgumentException e) {
                         plugin.getLogger().warning("奖励 '" + id + "' 的条件 '" + ck + "' type 无效，已跳过");
                     }
@@ -166,9 +224,49 @@ public class ConfigManager {
             double points = r.getDouble("rewards.points", 0);
             List<String> messagesList = r.getStringList("rewards.messages");
 
+            // ---- V3 新增字段 ----
+            String stage = r.getString("stage", null);
+            List<String> requires = r.getStringList("requires");
+            int dailyLimit = r.getInt("daily-limit", 0);
+            int weeklyLimit = r.getInt("weekly-limit", 0);
+            boolean partial = r.getBoolean("partial", false);
+            double per = r.getDouble("per", 0);
+            boolean consume = r.getBoolean("consume", true);
+            List<String> pool = r.getStringList("random-pool");
+            int poolCount = r.getInt("random-count", 1);
+            if (poolCount < 1) {
+                poolCount = 1;
+            }
+
             rewards.put(id, new RewardEntry(id, name, desc, conditions, repeatable, cooldown,
-                    items, commands, money, points, messagesList));
+                    items, commands, money, points, messagesList,
+                    stage, requires, dailyLimit, weeklyLimit, partial, per, consume, pool, poolCount));
         }
+    }
+
+    /** 解析 "HH:mm" 或纯小时为当日分钟数；失败返回 -1 */
+    private int parseTime(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            return -1;
+        }
+        String v = value.trim();
+        int hour;
+        int minute = 0;
+        int idx = v.indexOf(':');
+        try {
+            if (idx >= 0) {
+                hour = Integer.parseInt(v.substring(0, idx));
+                minute = Integer.parseInt(v.substring(idx + 1));
+            } else {
+                hour = Integer.parseInt(v);
+            }
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+        if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+            return -1;
+        }
+        return hour * 60 + minute;
     }
 
     private void loadMessages() {
@@ -191,6 +289,49 @@ public class ConfigManager {
 
     public boolean isTrackIndirect() {
         return trackIndirect;
+    }
+
+    // ============ 进度归属 / 世界隔离 ============
+
+    /** 进度归属模式 id：player | team（team 模式下队伍共享伤害） */
+    public String getScopeId() {
+        return scopeId;
+    }
+
+    /** 是否开启世界隔离（true=按世界分别统计进度，false=跨世界汇总） */
+    public boolean isWorldIsolation() {
+        return worldIsolation;
+    }
+
+    // ============ 排行榜 ============
+
+    public int getLeaderboardLimit() {
+        return leaderboardLimit;
+    }
+
+    /** 默认排序是否按伤害（false=按击杀） */
+    public boolean isLeaderboardByDamage() {
+        return leaderboardByDamage;
+    }
+
+    public int getLeaderboardRefreshSeconds() {
+        return leaderboardRefreshSeconds;
+    }
+
+    // ============ 赛季重置 ============
+
+    public boolean isSeasonAutoReset() {
+        return seasonAutoReset;
+    }
+
+    /** 赛季周期（小时） */
+    public int getSeasonPeriodHours() {
+        return seasonPeriodHours;
+    }
+
+    /** 赛季重置是否保留领取记录 */
+    public boolean isSeasonKeepClaims() {
+        return seasonKeepClaims;
     }
 
     // ============ 存储后端 ============

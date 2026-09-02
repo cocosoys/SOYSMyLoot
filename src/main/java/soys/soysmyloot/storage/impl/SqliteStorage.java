@@ -79,12 +79,21 @@ public class SqliteStorage extends SqlStorage {
                         + "reward_id TEXT NOT NULL,"
                         + "last_claim INTEGER NOT NULL DEFAULT 0,"
                         + "claim_count INTEGER NOT NULL DEFAULT 0,"
+                        + "daily_count INTEGER NOT NULL DEFAULT 0,"
+                        + "weekly_count INTEGER NOT NULL DEFAULT 0,"
+                        + "daily_start INTEGER NOT NULL DEFAULT 0,"
+                        + "weekly_start INTEGER NOT NULL DEFAULT 0,"
                         + "PRIMARY KEY (player_uuid, reward_id)"
                         + ")",
                 "CREATE INDEX IF NOT EXISTS idx_" + tablePrefix + "claims_uuid"
                         + " ON " + claimsTable() + " (player_uuid)",
                 "CREATE INDEX IF NOT EXISTS idx_" + tablePrefix + "progress_uuid"
-                        + " ON " + progressTable() + " (player_uuid)"
+                        + " ON " + progressTable() + " (player_uuid)",
+                "CREATE TABLE IF NOT EXISTS " + metaTable() + " ("
+                        + "player_uuid TEXT NOT NULL,"
+                        + "online_minutes INTEGER NOT NULL DEFAULT 0,"
+                        + "PRIMARY KEY (player_uuid)"
+                        + ")"
         };
     }
 }

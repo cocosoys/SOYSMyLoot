@@ -95,10 +95,11 @@ public class MysqlStorage extends SqlStorage {
         return new String[]{
                 "CREATE TABLE IF NOT EXISTS " + progressTable() + " ("
                         + "player_uuid VARCHAR(36) NOT NULL,"
+                        + "world VARCHAR(64) NOT NULL DEFAULT '',"
                         + "monster_id VARCHAR(64) NOT NULL,"
                         + "damage DOUBLE NOT NULL DEFAULT 0,"
                         + "kills INT NOT NULL DEFAULT 0,"
-                        + "PRIMARY KEY (player_uuid, monster_id),"
+                        + "PRIMARY KEY (player_uuid, world, monster_id),"
                         + "INDEX idx_" + tablePrefix + "progress_mon (monster_id)"
                         + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
                 "CREATE TABLE IF NOT EXISTS " + claimsTable() + " ("
@@ -106,9 +107,23 @@ public class MysqlStorage extends SqlStorage {
                         + "reward_id VARCHAR(64) NOT NULL,"
                         + "last_claim BIGINT NOT NULL DEFAULT 0,"
                         + "claim_count INT NOT NULL DEFAULT 0,"
+                        + "daily_count INT NOT NULL DEFAULT 0,"
+                        + "weekly_count INT NOT NULL DEFAULT 0,"
+                        + "daily_start BIGINT NOT NULL DEFAULT 0,"
+                        + "weekly_start BIGINT NOT NULL DEFAULT 0,"
                         + "PRIMARY KEY (player_uuid, reward_id)"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+                "CREATE TABLE IF NOT EXISTS " + metaTable() + " ("
+                        + "player_uuid VARCHAR(36) NOT NULL,"
+                        + "online_minutes BIGINT NOT NULL DEFAULT 0,"
+                        + "PRIMARY KEY (player_uuid)"
                         + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
         };
+    }
+
+    @Override
+    protected String worldColumnDdl() {
+        return "VARCHAR(64) NOT NULL DEFAULT ''";
     }
 
     /**

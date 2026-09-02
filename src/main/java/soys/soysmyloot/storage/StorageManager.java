@@ -2,11 +2,16 @@ package soys.soysmyloot.storage;
 
 import soys.soysmyloot.SOYSMyLoot;
 import soys.soysmyloot.data.PlayerData;
+import soys.soysmyloot.storage.LeaderboardRow;
 import soys.soysmyloot.storage.impl.MysqlStorage;
 import soys.soysmyloot.storage.impl.SqlStorage;
 import soys.soysmyloot.storage.impl.SqliteStorage;
 import soys.soysmyloot.storage.impl.YamlStorage;
 
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.YamlConfiguration;
+
+import java.io.File;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -453,6 +458,191 @@ public class StorageManager {
     private void debug(String message) {
         if (plugin.getConfigManager().isDebug()) {
             plugin.getLogger().info("[存储] " + message);
+        }
+    }
+
+    // ================================================================
+    //  赛季与排行榜
+    // ================================================================
+
+    /**
+     * 清空全部进度（保留领取记录）：主存储与所有可用的辅助存储都执行。
+     *
+     * @throws Exception 主存储清空失败时抛出
+     */
+    public void clearProgressAll() throws Exception {
+        primary.clearProgress();
+        for (DataStorage storage : secondaries) {
+            if (!storage.isAvailable()) {
+                continue;
+            }
+            try {
+                storage.clearProgress();
+            } catch (Exception e) {
+                plugin.getLogger().warning("清空辅助存储 " + storage.getType().getId()
+                        + " 进度失败: " + e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 排行榜聚合：从主存储读取并排序后的前 limit 名（rank 尚未回填，由调用方赋值）。
+     *
+     * @param limit    返回数量上限
+     * @param byDamage true 按伤害降序，false 按击杀降序
+     */
+    public List<LeaderboardRow> topPlayers(int limit, boolean byDamage) {
+        try {
+            return primary.topPlayers(limit, byDamage);
+        } catch (Exception e) {
+            plugin.getLogger().log(Level.WARNING, "读取排行榜失败: " + e.getMessage(), e);
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * 清空全部数据（进度 + 领取）：主存储与所有可用辅助存储都执行。仅完全重置时使用。
+     */
+    public void clearAll() throws Exception {
+        primary.clear();
+        for (DataStorage storage : secondaries) {
+            if (!storage.isAvailable()) {
+                continue;
+            }
+            try {
+                storage.clear();
+            } catch (Exception e) {
+                plugin.getLogger().warning("清空辅助存储 " + storage.getType().getId()
+                        + " 全部数据失败: " + e.getMessage());
+            }
+        }
+    }
+
+    // ================================================================
+    //  导入 / 导出（备份与迁移）
+    // ================================================================
+
+    /**
+     * 导出全部玩家数据到 YAML 文件（可移植备份格式，独立于后端实现）。
+     *
+     * @return 导出的玩家数量
+     */
+    public int exportAll(File file) throws Exception {
+        Collection<PlayerData> all = primary.loadAllPlayers();
+        YamlConfiguration out = new YamlConfiguration();
+        for (PlayerData data : all) {
+            String base = "players." + data.getUuid();
+            for (Map.Entry<String, Double> entry : data.getDamageMap().entrySet()) {
+                String[] parts = PlayerData.splitKey(entry.getKey());
+                String worldKey = parts[0].isEmpty() ? "__global__" : parts[0];
+                String path = base + ".progress." + worldKey + "." + parts[1];
+                out.set(path + ".damage", entry.getValue());
+                out.set(path + ".kills", data.getKills(parts[0], parts[1]));
+            }
+            java.util.Set<String> claimIds = new java.util.HashSet<>(data.getLastClaimMap().keySet());
+            claimIds.addAll(data.getDailyClaimCountMap().keySet());
+            claimIds.addAll(data.getWeeklyClaimCountMap().keySet());
+            for (String rid : claimIds) {
+                String path = base + ".claims." + rid;
+                out.set(path + ".last-claim", data.getLastClaimMap().getOrDefault(rid, 0L));
+                out.set(path + ".claim-count", data.getClaimCount(rid));
+                out.set(path + ".daily-count", data.getDailyClaimCountMap().getOrDefault(rid, 0));
+                out.set(path + ".daily-start", data.getDailyClaimStartMap().getOrDefault(rid, 0L));
+                out.set(path + ".weekly-count", data.getWeeklyClaimCountMap().getOrDefault(rid, 0));
+                out.set(path + ".weekly-start", data.getWeeklyClaimStartMap().getOrDefault(rid, 0L));
+            }
+            out.set(base + ".online-minutes", data.getOnlineMinutes());
+        }
+        out.save(file);
+        return all.size();
+    }
+
+    /**
+     * 从 YAML 备份文件导入数据：按 owner 逐条 upsert 覆盖（合并模式，不删除文件中没有的玩家）。
+     *
+     * @return 导入的玩家数量
+     */
+    public int importAll(File file) throws Exception {
+        if (file == null || !file.exists()) {
+            throw new IllegalStateException("备份文件不存在: " + (file == null ? "null" : file.getPath()));
+        }
+        YamlConfiguration in = YamlConfiguration.loadConfiguration(file);
+        ConfigurationSection root = in.getConfigurationSection("players");
+        if (root == null) {
+            return 0;
+        }
+        List<PlayerData> toSave = new ArrayList<>();
+        for (String key : root.getKeys(false)) {
+            UUID uuid = parseUuidSafe(key);
+            if (uuid == null) {
+                continue;
+            }
+            PlayerData data = new PlayerData(uuid);
+            ConfigurationSection section = root.getConfigurationSection(key);
+            if (section == null) {
+                continue;
+            }
+            ConfigurationSection progress = section.getConfigurationSection("progress");
+            if (progress != null) {
+                for (String worldKey : progress.getKeys(false)) {
+                    String world = "__global__".equals(worldKey) ? "" : worldKey;
+                    ConfigurationSection ws = progress.getConfigurationSection(worldKey);
+                    if (ws == null) {
+                        continue;
+                    }
+                    for (String mid : ws.getKeys(false)) {
+                        ConfigurationSection ps = ws.getConfigurationSection(mid);
+                        if (ps == null) {
+                            continue;
+                        }
+                        data.setDamage(world, mid, ps.getDouble("damage", 0));
+                        data.setKill(world, mid, ps.getInt("kills", 0));
+                    }
+                }
+            }
+            ConfigurationSection claims = section.getConfigurationSection("claims");
+            if (claims != null) {
+                for (String rid : claims.getKeys(false)) {
+                    ConfigurationSection cs = claims.getConfigurationSection(rid);
+                    if (cs == null) {
+                        continue;
+                    }
+                    data.setLastClaim(rid, cs.getLong("last-claim", 0));
+                    data.setClaimCount(rid, cs.getInt("claim-count", 0));
+                    data.setDailyClaim(rid, cs.getInt("daily-count", 0), cs.getLong("daily-start", 0));
+                    data.setWeeklyClaim(rid, cs.getInt("weekly-count", 0), cs.getLong("weekly-start", 0));
+                }
+            }
+            data.setOnlineMinutes(section.getLong("online-minutes", 0));
+            data.clearDirty();
+            toSave.add(data);
+        }
+        if (toSave.isEmpty()) {
+            return 0;
+        }
+        primary.savePlayers(toSave);
+        for (DataStorage storage : secondaries) {
+            if (!storage.isAvailable()) {
+                continue;
+            }
+            try {
+                storage.savePlayers(toSave);
+            } catch (Exception e) {
+                plugin.getLogger().warning("导入镜像到 " + storage.getType().getId()
+                        + " 失败: " + e.getMessage());
+            }
+        }
+        return toSave.size();
+    }
+
+    private UUID parseUuidSafe(String input) {
+        if (input == null) {
+            return null;
+        }
+        try {
+            return UUID.fromString(input);
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 

@@ -12,6 +12,7 @@ import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.projectiles.ProjectileSource;
 import soys.soysmyloot.SOYSMyLoot;
+import soys.soysmyloot.ScopeResolver;
 import soys.soysmyloot.config.ConfigManager;
 import soys.soysmyloot.data.DataManager;
 import soys.soysmyloot.model.MonsterEntry;
@@ -24,11 +25,14 @@ public class EntityListener implements Listener {
     private final SOYSMyLoot plugin;
     private final ConfigManager config;
     private final DataManager dataManager;
+    private final ScopeResolver scopeResolver;
 
-    public EntityListener(SOYSMyLoot plugin, ConfigManager config, DataManager dataManager) {
+    public EntityListener(SOYSMyLoot plugin, ConfigManager config, DataManager dataManager,
+                          ScopeResolver scopeResolver) {
         this.plugin = plugin;
         this.config = config;
         this.dataManager = dataManager;
+        this.scopeResolver = scopeResolver;
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -52,11 +56,14 @@ public class EntityListener implements Listener {
             return;
         }
 
-        dataManager.getData(player.getUniqueId()).addDamage(monster.getId(), event.getFinalDamage());
+        // 进度归属：队伍模式 -> 队伍 UUID；世界隔离 -> 实体所在世界
+        java.util.UUID owner = scopeResolver.resolveOwner(player);
+        String world = scopeResolver.resolveWorld(entity.getWorld().getName());
+        dataManager.getData(owner).addDamage(world, monster.getId(), event.getFinalDamage());
 
         if (config.isDebug()) {
             plugin.getLogger().info("[追踪] " + player.getName() + " 对 " + monster.getId()
-                    + " 造成 " + event.getFinalDamage() + " 点伤害");
+                    + " 造成 " + event.getFinalDamage() + " 点伤害（owner=" + owner + ", world=" + world + "）");
         }
     }
 
@@ -72,16 +79,24 @@ public class EntityListener implements Listener {
             return;
         }
 
-        dataManager.getData(killer.getUniqueId()).addKill(monster.getId(), 1);
+        java.util.UUID owner = scopeResolver.resolveOwner(killer);
+        String world = scopeResolver.resolveWorld(entity.getWorld().getName());
+        dataManager.getData(owner).addKill(world, monster.getId(), 1);
 
         if (config.isDebug()) {
-            plugin.getLogger().info("[追踪] " + killer.getName() + " 击杀 " + monster.getId());
+            plugin.getLogger().info("[追踪] " + killer.getName() + " 击杀 " + monster.getId()
+                    + "（owner=" + owner + ", world=" + world + "）");
         }
     }
 
     @EventHandler(priority = EventPriority.MONITOR)
     public void onQuit(PlayerQuitEvent event) {
-        dataManager.unload(event.getPlayer().getUniqueId());
+        // 队伍模式下进度归属为队伍 UUID（被多名成员共享），不应在单人退出时卸载，
+        // 否则可能与其他在线成员的在途写产生竞态。仅玩家专属数据在此卸载。
+        java.util.UUID owner = scopeResolver.resolveOwner(event.getPlayer());
+        if (owner.equals(event.getPlayer().getUniqueId())) {
+            dataManager.unload(owner);
+        }
     }
 
     /** 从伤害来源中提取玩家（兼容近战与投射物） */

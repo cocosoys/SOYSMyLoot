@@ -3,6 +3,7 @@ package soys.soysmyloot.storage.impl;
 import soys.soysmyloot.SOYSMyLoot;
 import soys.soysmyloot.data.PlayerData;
 import soys.soysmyloot.storage.DataStorage;
+import soys.soysmyloot.storage.LeaderboardRow;
 import soys.soysmyloot.storage.StorageType;
 
 import java.sql.Connection;
@@ -75,6 +76,10 @@ public abstract class SqlStorage implements DataStorage {
         return tablePrefix + "claims";
     }
 
+    protected String metaTable() {
+        return tablePrefix + "meta";
+    }
+
     // ================================================================
     //  生命周期
     // ================================================================
@@ -95,6 +100,7 @@ public abstract class SqlStorage implements DataStorage {
                 }
             }
             ensureWorldColumn();
+            ensureClaimsColumns();
         }
         available = true;
     }
@@ -172,7 +178,8 @@ public abstract class SqlStorage implements DataStorage {
                 }
             }
 
-            String claimsSql = "SELECT reward_id, last_claim, claim_count FROM " + claimsTable() + " WHERE player_uuid = ?";
+            String claimsSql = "SELECT reward_id, last_claim, claim_count, daily_count, weekly_count, daily_start, weekly_start"
+                    + " FROM " + claimsTable() + " WHERE player_uuid = ?";
             try (PreparedStatement statement = conn.prepareStatement(claimsSql)) {
                 statement.setString(1, playerUuid.toString());
                 try (ResultSet rs = statement.executeQuery()) {
@@ -180,12 +187,28 @@ public abstract class SqlStorage implements DataStorage {
                         String rid = rs.getString("reward_id");
                         data.setLastClaim(rid, rs.getLong("last_claim"));
                         data.setClaimCount(rid, rs.getInt("claim_count"));
+                        data.setDailyClaim(rid, rs.getInt("daily_count"), rs.getLong("daily_start"));
+                        data.setWeeklyClaim(rid, rs.getInt("weekly_count"), rs.getLong("weekly_start"));
                     }
                 }
             }
 
+            loadMeta(conn, playerUuid, data);
+
             data.clearDirty();
             return data;
+        }
+    }
+
+    private void loadMeta(Connection conn, UUID playerUuid, PlayerData data) throws SQLException {
+        String sql = "SELECT online_minutes FROM " + metaTable() + " WHERE player_uuid = ?";
+        try (PreparedStatement statement = conn.prepareStatement(sql)) {
+            statement.setString(1, playerUuid.toString());
+            try (ResultSet rs = statement.executeQuery()) {
+                if (rs.next()) {
+                    data.setOnlineMinutes(rs.getLong("online_minutes"));
+                }
+            }
         }
     }
 
@@ -221,6 +244,20 @@ public abstract class SqlStorage implements DataStorage {
                     String rid = rs.getString("reward_id");
                     data.setLastClaim(rid, rs.getLong("last_claim"));
                     data.setClaimCount(rid, rs.getInt("claim_count"));
+                    data.setDailyClaim(rid, rs.getInt("daily_count"), rs.getLong("daily_start"));
+                    data.setWeeklyClaim(rid, rs.getInt("weekly_count"), rs.getLong("weekly_start"));
+                }
+            }
+
+            try (Statement statement = conn.createStatement();
+                 ResultSet rs = statement.executeQuery("SELECT * FROM " + metaTable())) {
+                while (rs.next()) {
+                    UUID uuid = parseUuid(rs.getString("player_uuid"));
+                    if (uuid == null) {
+                        continue;
+                    }
+                    PlayerData data = map.computeIfAbsent(uuid, PlayerData::new);
+                    data.setOnlineMinutes(rs.getLong("online_minutes"));
                 }
             }
 
@@ -305,6 +342,11 @@ public abstract class SqlStorage implements DataStorage {
                 statement.setString(1, playerUuid.toString());
                 statement.executeUpdate();
             }
+            try (PreparedStatement statement =
+                         conn.prepareStatement("DELETE FROM " + metaTable() + " WHERE player_uuid = ?")) {
+                statement.setString(1, playerUuid.toString());
+                statement.executeUpdate();
+            }
         }
     }
 
@@ -373,6 +415,28 @@ public abstract class SqlStorage implements DataStorage {
         return "TEXT NOT NULL DEFAULT ''";
     }
 
+    /**
+     * 兼容从旧表升级：若 claims 表缺少每日/每周列则尝试追加，避免数据丢失。
+     * 新建的表已通过建表语句包含这些列，此处 ALTER 会因列已存在而静默失败。
+     */
+    private void ensureClaimsColumns() {
+        String[] cols = {
+                "daily_count INTEGER NOT NULL DEFAULT 0",
+                "weekly_count INTEGER NOT NULL DEFAULT 0",
+                "daily_start BIGINT NOT NULL DEFAULT 0",
+                "weekly_start BIGINT NOT NULL DEFAULT 0"
+        };
+        synchronized (lock) {
+            for (String col : cols) {
+                try (Statement statement = connection().createStatement()) {
+                    statement.executeUpdate("ALTER TABLE " + claimsTable() + " ADD COLUMN " + col);
+                } catch (SQLException ignored) {
+                    // 列已存在或方言不支持，忽略
+                }
+            }
+        }
+    }
+
     // ================================================================
     //  内部
     // ================================================================
@@ -417,17 +481,30 @@ public abstract class SqlStorage implements DataStorage {
         rewardIds.addAll(data.getClaimCountMap().keySet());
         if (!rewardIds.isEmpty()) {
             String sql = "REPLACE INTO " + claimsTable()
-                    + " (player_uuid, reward_id, last_claim, claim_count) VALUES (?, ?, ?, ?)";
+                    + " (player_uuid, reward_id, last_claim, claim_count, daily_count, weekly_count, daily_start, weekly_start)"
+                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
             try (PreparedStatement statement = conn.prepareStatement(sql)) {
                 for (String rid : rewardIds) {
                     statement.setString(1, uuid);
                     statement.setString(2, rid);
                     statement.setLong(3, data.getLastClaim(rid));
                     statement.setInt(4, data.getClaimCount(rid));
+                    statement.setInt(5, data.getDailyClaimCountMap().getOrDefault(rid, 0));
+                    statement.setInt(6, data.getWeeklyClaimCountMap().getOrDefault(rid, 0));
+                    statement.setLong(7, data.getDailyClaimStartMap().getOrDefault(rid, 0L));
+                    statement.setLong(8, data.getWeeklyClaimStartMap().getOrDefault(rid, 0L));
                     statement.addBatch();
                 }
                 statement.executeBatch();
             }
+        }
+
+        // 在线时长
+        try (PreparedStatement statement = conn.prepareStatement(
+                "REPLACE INTO " + metaTable() + " (player_uuid, online_minutes) VALUES (?, ?)")) {
+            statement.setString(1, uuid);
+            statement.setLong(2, data.getOnlineMinutes());
+            statement.executeUpdate();
         }
     }
 

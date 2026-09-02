@@ -5,6 +5,7 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import soys.soysmyloot.SOYSMyLoot;
 import soys.soysmyloot.data.PlayerData;
 import soys.soysmyloot.storage.DataStorage;
+import soys.soysmyloot.storage.LeaderboardRow;
 import soys.soysmyloot.storage.StorageType;
 
 import java.io.File;
@@ -13,7 +14,9 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -27,6 +30,9 @@ import java.util.UUID;
 public class YamlStorage implements DataStorage {
 
     private static final String ROOT = "players";
+
+    /** 进度节点中代表「不按世界隔离」的世界键（空世界在 YAML 中不易阅读，用哨兵替代） */
+    private static final String GLOBAL_WORLD = "__global__";
 
     private final SOYSMyLoot plugin;
     private final Object lock = new Object();
@@ -179,6 +185,37 @@ public class YamlStorage implements DataStorage {
         }
     }
 
+    @Override
+    public void clearProgress() throws Exception {
+        synchronized (lock) {
+            ConfigurationSection root = config.getConfigurationSection(ROOT);
+            if (root != null) {
+                for (String key : root.getKeys(false)) {
+                    config.set(ROOT + "." + key + ".progress", null);
+                }
+            }
+            flush();
+        }
+    }
+
+    @Override
+    public List<LeaderboardRow> topPlayers(int limit, boolean byDamage) throws Exception {
+        synchronized (lock) {
+            Collection<PlayerData> players = loadAllPlayers();
+            List<LeaderboardRow> rows = new ArrayList<>();
+            for (PlayerData data : players) {
+                rows.add(new LeaderboardRow(data.getUuid(), data.getTotalDamage(), data.getTotalKills()));
+            }
+            rows.sort(byDamage
+                    ? Comparator.<LeaderboardRow>comparingDouble(LeaderboardRow::getTotalDamage).reversed()
+                    .thenComparingInt(LeaderboardRow::getTotalKills).reversed()
+                    : Comparator.<LeaderboardRow>comparingInt(LeaderboardRow::getTotalKills).reversed()
+                    .thenComparingDouble(LeaderboardRow::getTotalDamage).reversed());
+            int lim = Math.max(1, limit);
+            return rows.subList(0, Math.min(lim, rows.size()));
+        }
+    }
+
     // ================================================================
     //  内部
     // ================================================================
@@ -201,20 +238,32 @@ public class YamlStorage implements DataStorage {
         // 整体重写 progress 节点，避免残留已无数据的怪物
         config.set(base + ".progress", null);
         for (Map.Entry<String, Double> entry : data.getDamageMap().entrySet()) {
-            String mid = entry.getKey();
-            String path = base + ".progress." + mid;
+            String composite = entry.getKey();
+            String[] parts = PlayerData.splitKey(composite);
+            String worldKey = parts[0].isEmpty() ? GLOBAL_WORLD : parts[0];
+            String mid = parts[1];
+            String path = base + ".progress." + worldKey + "." + mid;
             config.set(path + ".damage", entry.getValue());
-            config.set(path + ".kills", data.getKills(mid));
+            config.set(path + ".kills", data.getKills(parts[0], mid));
         }
 
         // 整体重写 claims 节点
         config.set(base + ".claims", null);
-        for (Map.Entry<String, Long> entry : data.getLastClaimMap().entrySet()) {
-            String rid = entry.getKey();
+        java.util.Set<String> rewardIds = new java.util.HashSet<>(data.getLastClaimMap().keySet());
+        rewardIds.addAll(data.getDailyClaimCountMap().keySet());
+        rewardIds.addAll(data.getWeeklyClaimCountMap().keySet());
+        for (String rid : rewardIds) {
             String path = base + ".claims." + rid;
-            config.set(path + ".last-claim", entry.getValue());
+            config.set(path + ".last-claim", data.getLastClaimMap().getOrDefault(rid, 0L));
             config.set(path + ".claim-count", data.getClaimCount(rid));
+            config.set(path + ".daily-count", data.getDailyClaimCountMap().getOrDefault(rid, 0));
+            config.set(path + ".daily-start", data.getDailyClaimStartMap().getOrDefault(rid, 0L));
+            config.set(path + ".weekly-count", data.getWeeklyClaimCountMap().getOrDefault(rid, 0));
+            config.set(path + ".weekly-start", data.getWeeklyClaimStartMap().getOrDefault(rid, 0L));
         }
+
+        // 累计在线时长（分钟）
+        config.set(base + ".online-minutes", data.getOnlineMinutes());
     }
 
     private PlayerData deserialize(UUID id, ConfigurationSection section) {
@@ -222,13 +271,20 @@ public class YamlStorage implements DataStorage {
 
         ConfigurationSection progress = section.getConfigurationSection("progress");
         if (progress != null) {
-            for (String mid : progress.getKeys(false)) {
-                ConfigurationSection ps = progress.getConfigurationSection(mid);
-                if (ps == null) {
+            for (String worldKey : progress.getKeys(false)) {
+                ConfigurationSection ws = progress.getConfigurationSection(worldKey);
+                if (ws == null) {
                     continue;
                 }
-                data.setDamage(mid, ps.getDouble("damage", 0));
-                data.setKill(mid, ps.getInt("kills", 0));
+                String world = GLOBAL_WORLD.equals(worldKey) ? "" : worldKey;
+                for (String mid : ws.getKeys(false)) {
+                    ConfigurationSection ps = ws.getConfigurationSection(mid);
+                    if (ps == null) {
+                        continue;
+                    }
+                    data.setDamage(world, mid, ps.getDouble("damage", 0));
+                    data.setKill(world, mid, ps.getInt("kills", 0));
+                }
             }
         }
 
@@ -241,8 +297,12 @@ public class YamlStorage implements DataStorage {
                 }
                 data.setLastClaim(rid, cs.getLong("last-claim", 0));
                 data.setClaimCount(rid, cs.getInt("claim-count", 0));
+                data.setDailyClaim(rid, cs.getInt("daily-count", 0), cs.getLong("daily-start", 0));
+                data.setWeeklyClaim(rid, cs.getInt("weekly-count", 0), cs.getLong("weekly-start", 0));
             }
         }
+
+        data.setOnlineMinutes(section.getLong("online-minutes", 0));
 
         data.clearDirty();
         return data;

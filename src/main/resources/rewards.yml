@@ -3,48 +3,277 @@
 # =========================================
 # 在此定义玩家达到条件后可领取的奖励。
 # 领取指令：/myloot claim <奖励ID>
-# 条件（conditions）需全部满足才能领取。
+# 条件（conditions）需全部满足才能领取（部分领取模式除外）。
+#
+# ---- 条件类型（type）----
+#   DAMAGE   对该怪物累计造成的伤害 >= amount
+#   KILLS    对该怪物的击杀数 >= amount
+#   LEVEL    玩家等级 >= amount
+#   MONEY    玩家余额 >= amount（需 Vault 及经济插件）
+#   ONLINE   玩家累计在线时长 >= amount（分钟，基于 PLAY_ONE_MINUTE 统计）
+#   HAS_ITEM 玩家持有指定物品数量 >= amount（需 material，可选 data 指定耐久）
+#   TIME     当前服务器时间处于 [start, end] 内（可选 days 限制星期 1=周一..7=周日）
+#
+# ---- 其它可选字段 ----
+#   stage        多阶段分组标识（铜/银/金），仅用于排序与展示
+#   requires     前置奖励 ID 列表（需先全部领取）
+#   daily-limit  每日领取上限（0=不限）
+#   weekly-limit 每周领取上限（0=不限）
+#   partial      部分领取：按单位进度累进发放（true/false）
+#   per          部分领取的单位进度（默认=首个伤害/击杀条件的 amount）
+#   consume      部分领取是否消耗进度（默认 true）
+#   random-pool  随机奖励池（奖励 ID 列表），领取时随机抽取
+#   random-count 随机池每次抽取数量（默认 1）
 
 rewards:
-  # ---------- 奖励ID（唯一，指令与占位符通过它引用）----------
+  # ---------- 基础示例：伤害 + 击杀 ----------
   example_reward:
-    # 显示名称（支持 & 颜色代码）
     name: "&a新手猎人奖励"
-    # 奖励描述（支持 & 颜色代码）
     description: "&7对示例僵尸累计造成 1000 点伤害并击杀 5 只"
-
-    # 领取条件（需全部满足）
     conditions:
-      # 条件类型：DAMAGE = 对该怪物累计造成的伤害；KILLS = 对该怪物的击杀数
       - type: DAMAGE
-        monster: example_zombie      # 关联 monsters.yml 中的怪物ID
-        amount: 1000                 # 需要达到的数值
+        monster: example_zombie
+        amount: 1000
       - type: KILLS
         monster: example_zombie
         amount: 5
-
-    # 是否可重复领取（true = 可领取多次；false = 仅一次）
     repeatable: false
-    # 冷却时间（秒）。repeatable 为 true 且 cooldown > 0 时，两次领取之间需等待该时长；0 = 无冷却
     cooldown: 0
-
-    # 奖励内容
     rewards:
-      # 物品奖励（可多个）
       items:
-        - material: DIAMOND          # 物品类型，需与 org.bukkit.Material 枚举名一致
-          amount: 1                  # 数量
-          name: "&b猎人钻石"          # 自定义名称（支持颜色代码）
-          lore:                      # 物品 Lore（支持颜色代码）
+        - material: DIAMOND
+          amount: 1
+          name: "&b猎人钻石"
+          lore:
             - "&7来自 SOYSMyLoot"
-            - "&7新手猎人奖励"
-      # 控制台执行的指令（支持 %player% 占位符，自动替换为玩家名）
       commands:
         - "give %player% golden_apple 3"
-      # 金钱奖励（需要 Vault 及对应经济插件）
       money: 1000
-      # 点券奖励（需要 PlayerPoints 插件）
       points: 100
-      # 领取后发给玩家的消息（支持颜色代码）
       messages:
         - "&a恭喜你获得了新手猎人奖励！"
+
+  # ---------- 条件类型扩展 ----------
+  level_reward:
+    name: "&a等级达人"
+    description: "&7达到 30 级即可领取"
+    conditions:
+      - type: LEVEL
+        amount: 30
+    rewards:
+      items:
+        - material: EXPERIENCE_BOTTLE
+          amount: 10
+      messages:
+        - "&a等级达标，奖励到手！"
+
+  money_reward:
+    name: "&a土豪嘉奖"
+    description: "&7持有 50000 金币即可领取（需 Vault）"
+    conditions:
+      - type: MONEY
+        amount: 50000
+    rewards:
+      points: 500
+      messages:
+        - "&a富甲一方，点券 +500！"
+
+  online_reward:
+    name: "&a在线劳模"
+    description: "&7累计在线满 120 分钟"
+    conditions:
+      - type: ONLINE
+        amount: 120
+    rewards:
+      items:
+        - material: CLOCK
+          amount: 1
+          name: "&e时光之钟"
+      messages:
+        - "&a你已在线 2 小时，辛苦了！"
+
+  hasitem_reward:
+    name: "&a钻石收藏家"
+    description: "&7身上持有 10 个钻石"
+    conditions:
+      - type: HAS_ITEM
+        material: DIAMOND
+        amount: 10
+    rewards:
+      money: 2000
+      messages:
+        - "&a钻石归仓，奖励 2000 金币！"
+
+  time_reward:
+    name: "&a夜行者"
+    description: "&718:00-23:59 且为周五/六/日 在线可领"
+    conditions:
+      - type: TIME
+        start: "18:00"
+        end: "23:59"
+        days: [5, 6, 7]
+    repeatable: true
+    cooldown: 3600
+    rewards:
+      items:
+        - material: GLOWSTONE
+          amount: 16
+      messages:
+        - "&a夜间补给已发放！"
+
+  # ---------- 部分领取（按进度比例发放）----------
+  partial_reward:
+    name: "&a屠戮佣金"
+    description: "&7每累计 500 点伤害，按比例发放佣金（可重复）"
+    conditions:
+      - type: DAMAGE
+        monster: example_zombie
+        amount: 500          # 单个单位基准（per 默认值）
+    partial: true            # 开启部分领取
+    per: 500                 # 每 500 点伤害兑换 1 份
+    consume: true            # 领取后消耗对应进度
+    repeatable: true
+    cooldown: 0
+    rewards:
+      money: 200             # 每单位发放 200 金币
+      points: 5
+      messages:
+        - "&a按伤害比例发放了屠戮佣金！"
+
+  # ---------- 多阶段奖励（铜/银/金）----------
+  tier_bronze:
+    name: "&6铜级猎手"
+    description: "&7对示例僵尸造成 1000 伤害"
+    stage: bronze
+    conditions:
+      - type: DAMAGE
+        monster: example_zombie
+        amount: 1000
+    rewards:
+      items:
+        - material: IRON_INGOT
+          amount: 5
+      messages:
+        - "&6铜级达成！"
+
+  tier_silver:
+    name: "&f银级猎手"
+    description: "&7对示例僵尸造成 5000 伤害（需先领取铜级）"
+    stage: silver
+    requires: [tier_bronze]
+    conditions:
+      - type: DAMAGE
+        monster: example_zombie
+        amount: 5000
+    rewards:
+      items:
+        - material: GOLD_INGOT
+          amount: 5
+      messages:
+        - "&f银级达成！"
+
+  tier_gold:
+    name: "&e金级猎手"
+    description: "&7对示例僵尸造成 20000 伤害（需先领取银级）"
+    stage: gold
+    requires: [tier_silver]
+    conditions:
+      - type: DAMAGE
+        monster: example_zombie
+        amount: 20000
+    rewards:
+      items:
+        - material: DIAMOND_BLOCK
+          amount: 1
+      money: 5000
+      messages:
+        - "&e金级达成，传奇猎手！"
+
+  # ---------- 每日 / 每周领取限制 ----------
+  daily_box:
+    name: "&a每日补给箱"
+    description: "&7每天可领 1 次，需击杀示例僵尸 1 只"
+    conditions:
+      - type: KILLS
+        monster: example_zombie
+        amount: 1
+    repeatable: true
+    daily-limit: 1
+    rewards:
+      items:
+        - material: CHEST
+          amount: 1
+          name: "&a每日补给箱"
+      messages:
+        - "&a每日补给已领取！"
+
+  weekly_bonus:
+    name: "&b每周豪礼"
+    description: "&7每周可领 1 次，需击杀示例骷髅 10 只"
+    conditions:
+      - type: KILLS
+        monster: example_skeleton
+        amount: 10
+    repeatable: true
+    weekly-limit: 1
+    rewards:
+      items:
+        - material: ENDER_CHEST
+          amount: 1
+      money: 8888
+      messages:
+        - "&b每周豪礼已领取！"
+
+  # ---------- 随机奖励池 ----------
+  mystery_box:
+    name: "&d神秘宝箱"
+    description: "&7开启后从奖励池中随机抽取 1 份奖励"
+    conditions:
+      - type: KILLS
+        monster: example_zombie
+        amount: 20
+    repeatable: true
+    cooldown: 300
+    random-pool: [pool_common, pool_rare, pool_epic]
+    random-count: 1
+    rewards:
+      messages:
+        - "&d你打开了神秘宝箱……"
+    # 奖励池模板（仅供随机池引用，通常不直接领取）
+  pool_common:
+    name: "普通奖励"
+    conditions:
+      - type: KILLS
+        monster: example_zombie
+        amount: 1
+    rewards:
+      items:
+        - material: COAL
+          amount: 8
+      messages:
+        - "&7获得 &f普通奖励&7：煤炭 x8"
+  pool_rare:
+    name: "稀有奖励"
+    conditions:
+      - type: KILLS
+        monster: example_zombie
+        amount: 1
+    rewards:
+      items:
+        - material: EMERALD
+          amount: 3
+      messages:
+        - "&b获得 &b稀有奖励&7：绿宝石 x3"
+  pool_epic:
+    name: "史诗奖励"
+    conditions:
+      - type: KILLS
+        monster: example_zombie
+        amount: 1
+    rewards:
+      items:
+        - material: NETHER_STAR
+          amount: 1
+      money: 6666
+      messages:
+        - "&d获得 &d史诗奖励&7：下界之星 x1！"

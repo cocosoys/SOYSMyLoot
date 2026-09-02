@@ -7,15 +7,17 @@ description: 根据玩家对配置怪物造成的伤害/击杀发放奖励的战
 
 # 强制依赖：PlaceholderAPI 必须存在插件才能启用
 depend: [PlaceholderAPI]
-# 软依赖：可选功能（经济/点券），缺失时对应奖励项自动跳过并提示
-softdepend: [Vault, PlayerPoints]
+# 软依赖：可选功能（经济/点券/队伍共享），缺失时对应功能自动跳过并提示
+#   Vault / PlayerPoints -> 金钱/点券奖励
+#   SOYSLinkTeam        -> 队伍/公会共享伤害（tracking.scope: team）
+softdepend: [Vault, PlayerPoints, SOYSLinkTeam]
 
 commands:
   myloot:
     description: SOYSMyLoot 主指令
     aliases: [ml, loot]
     permission: soysmyloot.use
-    usage: /myloot <help|reload|list|claim|progress|info>
+    usage: /myloot <help|reload|list|claim|progress|info|top|export|import|migrate|reset>
 
 permissions:
   soysmyloot.use:

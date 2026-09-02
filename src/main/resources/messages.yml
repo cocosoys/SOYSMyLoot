@@ -28,6 +28,9 @@ reward-claimed: "{prefix}&c你已经领取过该奖励了！"
 reward-cooldown: "{prefix}&c该奖励正在冷却中，还需等待 &e{time} &c秒！"
 reward-conditions-not-met: "{prefix}&c你还不满足领取条件！"
 reward-claimed-success: "{prefix}&a成功领取奖励 &e{name}&a！"
+reward-daily-limit: "{prefix}&c该奖励今日领取次数已达上限！"
+reward-weekly-limit: "{prefix}&c该奖励本周领取次数已达上限！"
+reward-partial-not-enough: "{prefix}&c进度还不足一个领取单位，继续积累伤害/击杀吧！"
 
 list-header: "{prefix}&6&m                      &r &e可领取奖励 &6&m                      "
 list-item-available: "&a[✔] &e{id} &7- &f{name}"
@@ -49,3 +52,32 @@ info-database: "&7数据库: &e{db} &7| 已追踪: &e{monsters} &7怪物 &e{rewa
 
 warn-no-vault: "{prefix}&c经济奖励发放失败：未安装 Vault 或经济插件"
 warn-no-playerpoints: "{prefix}&c点券奖励发放失败：未安装 PlayerPoints"
+
+# =========================================
+# 排行榜
+# =========================================
+# 占位符：{rank} 名次 {owner} 归属名 {damage} 伤害 {kills} 击杀
+leaderboard-header-damage: "{prefix}&6&m                      &r &e伤害排行榜 &6&m                      "
+leaderboard-header-kills: "{prefix}&6&m                      &r &e击杀排行榜 &6&m                      "
+leaderboard-line: "&e#{rank} &f{owner} &7- 伤害 &a{damage} &7| 击杀 &a{kills}"
+leaderboard-empty: "{prefix}&c暂无排行榜数据"
+leaderboard-self-damage: "{prefix}&7你的伤害排名: &e#{rank} &7| 伤害 &a{damage} &7| 击杀 &a{kills}"
+leaderboard-self-kills: "{prefix}&7你的击杀排名: &e#{rank} &7| 伤害 &a{damage} &7| 击杀 &a{kills}"
+leaderboard-unranked: "{prefix}&7你暂无上榜记录"
+
+# =========================================
+# 数据导入 / 导出 / 迁移 / 重置
+# =========================================
+# 占位符：{count} 数量 {file} 文件名 {from} 来源 {to} 目标 {reason} 错误原因
+export-success: "{prefix}&a已导出 &e{count} &a名玩家数据到 &e{file}"
+export-fail: "{prefix}&c导出失败：{reason}"
+import-success: "{prefix}&a已从 &e{file} &a导入 &e{count} &a名玩家数据"
+import-fail: "{prefix}&c导入失败：{reason}"
+migrate-success: "{prefix}&a已迁移 &e{count} &a名玩家数据：&e{from} &7→ &e{to}"
+migrate-fail: "{prefix}&c迁移失败：{reason}"
+migrate-unknown: "{prefix}&c未知存储后端 &e{from} &c，可用：yaml / sqlite / mysql"
+reset-progress: "{prefix}&a已清空全部进度（保留领取记录）"
+reset-full: "{prefix}&c已清空全部数据（含领取记录）！"
+reset-usage: "{prefix}&c用法：&e/myloot reset <keep|full>"
+season-reset-keep: "{prefix}&6[赛季] &a新赛季开启，进度已清空（保留领取记录）"
+season-reset-full: "{prefix}&6[赛季] &c新赛季开启，全部数据已清空"

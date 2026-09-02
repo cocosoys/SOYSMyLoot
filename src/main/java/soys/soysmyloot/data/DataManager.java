@@ -64,4 +64,20 @@ public class DataManager {
             }
         }
     }
+
+    /**
+     * 重置内存中所有缓存玩家的进度（或全量数据），并触发异步落盘。
+     *
+     * @param full true 清空进度 + 领取记录；false 仅清空进度（保留领取）
+     */
+    public void resetProgressAll(boolean full) {
+        for (PlayerData data : cache.values()) {
+            if (full) {
+                data.clearAll();
+            } else {
+                data.clearProgress();
+            }
+            storageManager.savePlayerAsync(data);
+        }
+    }
 }
