@@ -17,7 +17,7 @@ commands:
     description: SOYSMyLoot 主指令
     aliases: [ml, loot]
     permission: soysmyloot.use
-    usage: /myloot <help|reload|list|claim|progress|info|top|export|import|migrate|reset>
+    usage: /myloot <help|reload|list|claim|progress|info|top|export|import|migrate|reset|give>
 
 permissions:
   soysmyloot.use:

@@ -80,4 +80,21 @@ public class DataManager {
             storageManager.savePlayerAsync(data);
         }
     }
+
+    /**
+     * 重置指定玩家的进度（或全量数据）。
+     * 若玩家不在缓存中，会先从主存储加载再修改，确保离线玩家也能被重置。
+     *
+     * @param uuid 玩家 UUID
+     * @param full true 清空进度 + 领取记录；false 仅清空进度（保留领取）
+     */
+    public void resetPlayer(UUID uuid, boolean full) {
+        PlayerData data = getData(uuid);
+        if (full) {
+            data.clearAll();
+        } else {
+            data.clearProgress();
+        }
+        storageManager.savePlayerAsync(data);
+    }
 }

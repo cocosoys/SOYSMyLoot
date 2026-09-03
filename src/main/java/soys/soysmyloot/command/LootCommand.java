@@ -165,7 +165,14 @@ public class LootCommand implements CommandExecutor, TabCompleter {
                     messageManager.send(sender, "no-permission");
                     return true;
                 }
-                doReset(sender, args.length >= 2 ? args[1] : null);
+                doReset(sender, args);
+                break;
+            case "give":
+                if (!sender.hasPermission("soysmyloot.admin")) {
+                    messageManager.send(sender, "no-permission");
+                    return true;
+                }
+                doGive(sender, args);
                 break;
             default:
                 messageManager.send(sender, "unknown-command");
@@ -185,7 +192,9 @@ public class LootCommand implements CommandExecutor, TabCompleter {
                 {"myloot export [文件]", "导出全部数据为备份"},
                 {"myloot import <文件>", "从备份导入数据"},
                 {"myloot migrate <from> <to>", "在存储后端间迁移数据"},
-                {"myloot reset <keep|full>", "清空进度/全部数据（管理员）"},
+                {"myloot reset <keep|full>", "清空全服进度/全部数据（管理员）"},
+                {"myloot reset <玩家> <keep|full>", "重置指定玩家进度（管理员）"},
+                {"myloot give <玩家> <奖励>", "代发奖励给指定玩家（管理员）"},
                 {"myloot reload", "重载配置（管理员）"}
         };
         for (String[] line : lines) {
@@ -492,22 +501,99 @@ public class LootCommand implements CommandExecutor, TabCompleter {
         });
     }
 
-    private void doReset(CommandSender sender, String modeArg) {
-        if (modeArg == null) {
+    /**
+     * 重置进度。
+     * 用法：
+     *   /myloot reset <keep|full>              —— 重置全服玩家进度
+     *   /myloot reset <玩家名> <keep|full>     —— 重置指定玩家进度
+     *
+     * @param args 完整指令参数（args[0] = "reset"）
+     */
+    private void doReset(CommandSender sender, String[] args) {
+        if (args.length < 2) {
             messageManager.send(sender, "reset-usage");
             return;
         }
-        boolean keepClaims;
-        if ("keep".equalsIgnoreCase(modeArg)) {
-            keepClaims = true;
-        } else if ("full".equalsIgnoreCase(modeArg)) {
-            keepClaims = false;
+
+        // 判断第二个参数是玩家名还是模式
+        String firstArg = args[1];
+        boolean isPlayerMode = !"keep".equalsIgnoreCase(firstArg) && !"full".equalsIgnoreCase(firstArg);
+
+        if (isPlayerMode) {
+            // 重置指定玩家：/myloot reset <玩家> <keep|full>
+            if (args.length < 3) {
+                messageManager.send(sender, "reset-player-usage");
+                return;
+            }
+            String modeArg = args[2];
+            int keepClaims = parseResetMode(sender, modeArg);
+            if (keepClaims == -1) {
+                return;
+            }
+            boolean keep = keepClaims == 1;
+            OfflinePlayer target = Bukkit.getOfflinePlayer(firstArg);
+            if (target == null) {
+                messageManager.send(sender, "player-not-found", ph("player", firstArg));
+                return;
+            }
+            dataManager.resetPlayer(target.getUniqueId(), !keep);
+            Map<String, String> ph = new HashMap<>();
+            ph.put("player", target.getName() != null ? target.getName() : firstArg);
+            messageManager.send(sender, keep ? "reset-player-progress" : "reset-player-full", ph);
         } else {
-            messageManager.send(sender, "reset-usage");
+            // 重置全服：/myloot reset <keep|full>
+            boolean keepClaims = parseResetMode(sender, firstArg) == 1;
+            seasonManager.resetProgress(keepClaims, true);
+            messageManager.send(sender, keepClaims ? "reset-progress" : "reset-full");
+        }
+    }
+
+    /**
+     * 解析重置模式，返回 1=keep, 0=full, -1=无效（已发送错误消息）。
+     */
+    private int parseResetMode(CommandSender sender, String modeArg) {
+        if ("keep".equalsIgnoreCase(modeArg)) {
+            return 1;
+        }
+        if ("full".equalsIgnoreCase(modeArg)) {
+            return 0;
+        }
+        messageManager.send(sender, "reset-usage");
+        return -1;
+    }
+
+    /**
+     * 管理员代发奖励：绕过条件校验、冷却、领取记录，直接发放奖励内容。
+     * 用法：/myloot give <玩家名> <奖励ID>
+     */
+    private void doGive(CommandSender sender, String[] args) {
+        if (args.length < 3) {
+            messageManager.send(sender, "give-usage");
             return;
         }
-        seasonManager.resetProgress(keepClaims, true);
-        messageManager.send(sender, keepClaims ? "reset-progress" : "reset-full");
+        String playerName = args[1];
+        String rewardId = args[2];
+
+        Player target = Bukkit.getPlayerExact(playerName);
+        if (target == null) {
+            messageManager.send(sender, "player-not-online", ph("player", playerName));
+            return;
+        }
+        RewardEntry reward = config.getReward(rewardId);
+        if (reward == null) {
+            Map<String, String> ph = new HashMap<>();
+            ph.put("id", rewardId);
+            messageManager.send(sender, "reward-not-found", ph);
+            return;
+        }
+
+        rewardManager.adminGive(target, reward);
+
+        Map<String, String> ph = new HashMap<>();
+        ph.put("player", target.getName());
+        ph.put("name", Text.color(reward.getName()));
+        ph.put("id", rewardId);
+        messageManager.send(sender, "give-success", ph);
     }
 
     private Map<String, String> ph(String k1, String v1) {
@@ -535,7 +621,7 @@ public class LootCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         List<String> result = new ArrayList<>();
         if (args.length == 1) {
-            String[] subs = {"help", "reload", "list", "claim", "progress", "info", "top", "export", "import", "migrate", "reset"};
+            String[] subs = {"help", "reload", "list", "claim", "progress", "info", "top", "export", "import", "migrate", "reset", "give"};
             for (String s : subs) {
                 if (s.startsWith(args[0].toLowerCase())) {
                     result.add(s);
@@ -570,9 +656,25 @@ public class LootCommand implements CommandExecutor, TabCompleter {
                     }
                 }
             } else if (a0.equals("reset")) {
+                // 第二个参数可能是 keep/full，也可能是玩家名
+                String input = args[1].toLowerCase();
                 for (String s : new String[]{"keep", "full"}) {
-                    if (s.startsWith(args[1].toLowerCase())) {
+                    if (s.startsWith(input)) {
                         result.add(s);
+                    }
+                }
+                // 补全在线玩家名
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    if (p.getName().toLowerCase().startsWith(input)) {
+                        result.add(p.getName());
+                    }
+                }
+            } else if (a0.equals("give")) {
+                // 补全在线玩家名
+                String input = args[1].toLowerCase();
+                for (Player p : Bukkit.getOnlinePlayers()) {
+                    if (p.getName().toLowerCase().startsWith(input)) {
+                        result.add(p.getName());
                     }
                 }
             } else if (a0.equals("import")) {
@@ -588,10 +690,27 @@ public class LootCommand implements CommandExecutor, TabCompleter {
                     }
                 }
             }
-        } else if (args.length == 3 && args[0].equalsIgnoreCase("migrate")) {
-            for (StorageType t : StorageType.values()) {
-                if (t.getId().startsWith(args[2].toLowerCase())) {
-                    result.add(t.getId());
+        } else if (args.length == 3) {
+            String a0 = args[0].toLowerCase();
+            if (a0.equals("migrate")) {
+                for (StorageType t : StorageType.values()) {
+                    if (t.getId().startsWith(args[2].toLowerCase())) {
+                        result.add(t.getId());
+                    }
+                }
+            } else if (a0.equals("give")) {
+                // 补全奖励ID
+                for (String id : config.getRewards().keySet()) {
+                    if (id.startsWith(args[2].toLowerCase())) {
+                        result.add(id);
+                    }
+                }
+            } else if (a0.equals("reset")) {
+                // 第三个参数是 keep/full
+                for (String s : new String[]{"keep", "full"}) {
+                    if (s.startsWith(args[2].toLowerCase())) {
+                        result.add(s);
+                    }
                 }
             }
         }

@@ -313,6 +313,32 @@ public class RewardManager {
         return true;
     }
 
+    /**
+     * 管理员代发奖励：绕过条件校验、冷却、领取记录，直接发放奖励内容。
+     * 用于 /myloot give 指令，不记录领取次数，不消耗进度。
+     *
+     * @param player 目标玩家
+     * @param reward 奖励配置
+     */
+    public void adminGive(Player player, RewardEntry reward) {
+        issueEffects(player, reward, 1);
+        // 随机奖励池：同 claim 逻辑，抽取若干奖励模板并发放
+        if (reward.getPool() != null && !reward.getPool().isEmpty()) {
+            List<RewardEntry> poolEntries = new ArrayList<>();
+            for (String id : reward.getPool()) {
+                RewardEntry e = plugin.getConfigManager().getReward(id);
+                if (e != null) {
+                    poolEntries.add(e);
+                }
+            }
+            Collections.shuffle(poolEntries);
+            int n = Math.min(reward.getPoolCount(), poolEntries.size());
+            for (int i = 0; i < n; i++) {
+                issueEffects(player, poolEntries.get(i), 1);
+            }
+        }
+    }
+
     /** 把一份奖励模板按 scale 倍发放给玩家（不处理条件与领取记录） */
     private void issueEffects(Player player, RewardEntry reward, int scale) {
         // 物品

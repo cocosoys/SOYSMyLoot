@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.logging.Level;
 
 /**
  * 配置管理器：负责加载、重载全部配置文件（config / monsters / rewards / messages），
@@ -52,6 +53,9 @@ public class ConfigManager {
     private final Map<String, MonsterEntry> monsters = new HashMap<>();
     private final Map<String, RewardEntry> rewards = new HashMap<>();
 
+    // ---- 配置校验错误收集 ----
+    private final List<String> configErrors = new ArrayList<>();
+
     // ---- messages.yml ----
     private YamlConfiguration messages;
 
@@ -59,12 +63,15 @@ public class ConfigManager {
         this.plugin = plugin;
     }
 
-    /** 加载全部配置 */
+    /** 加载全部配置，并在结束时执行引用完整性校验与错误汇总输出 */
     public void loadAll() {
+        configErrors.clear();
         loadSettings();
         loadMonsters();
         loadRewards();
         loadMessages();
+        validateReferences();
+        reportConfigErrors();
     }
 
     // ============ 内部加载 ============
@@ -117,7 +124,7 @@ public class ConfigManager {
             try {
                 type = EntityType.valueOf(typeStr);
             } catch (IllegalArgumentException e) {
-                plugin.getLogger().warning("怪物 '" + id + "' 的 type 无效: " + typeStr + "，已跳过");
+                configErrors.add("monsters.yml -> 怪物 '" + id + "' 的 type 无效: " + typeStr + "，该怪物已被跳过");
                 continue;
             }
             String name = m.getString("name", "");
@@ -169,8 +176,8 @@ public class ConfigManager {
                             try {
                                 itemMaterial = Material.valueOf(matStr);
                             } catch (IllegalArgumentException e) {
-                                plugin.getLogger().warning("奖励 '" + id + "' 的条件 '" + ck
-                                        + "' material 无效: " + matStr + "，已跳过");
+                                configErrors.add("rewards.yml -> 奖励 '" + id + "' 的条件 '" + ck
+                                        + "' material 无效: " + matStr + "，该条件已被跳过");
                                 continue;
                             }
                             itemData = c.getInt("data", -1);
@@ -178,8 +185,8 @@ public class ConfigManager {
                             startMin = parseTime(c.getString("start"));
                             endMin = parseTime(c.getString("end"));
                             if (startMin < 0 || endMin < 0) {
-                                plugin.getLogger().warning("奖励 '" + id + "' 的条件 '" + ck
-                                        + "' 缺少有效的 start/end 时间，已跳过");
+                                configErrors.add("rewards.yml -> 奖励 '" + id + "' 的条件 '" + ck
+                                        + "' 缺少有效的 start/end 时间，该条件已被跳过");
                                 continue;
                             }
                             List<Integer> dayList = c.getIntegerList("days");
@@ -189,7 +196,7 @@ public class ConfigManager {
                         conditions.add(new RewardEntry.Condition(ct, monsterId, amount,
                                 itemMaterial, itemData, startMin, endMin, days));
                     } catch (IllegalArgumentException e) {
-                        plugin.getLogger().warning("奖励 '" + id + "' 的条件 '" + ck + "' type 无效，已跳过");
+                        configErrors.add("rewards.yml -> 奖励 '" + id + "' 的条件 '" + ck + "' type 无效，该条件已被跳过");
                     }
                 }
             }
@@ -208,7 +215,7 @@ public class ConfigManager {
                     try {
                         material = org.bukkit.Material.valueOf(matStr);
                     } catch (IllegalArgumentException e) {
-                        plugin.getLogger().warning("奖励 '" + id + "' 的物品 '" + ik + "' material 无效: " + matStr + "，已跳过");
+                        configErrors.add("rewards.yml -> 奖励 '" + id + "' 的物品 '" + ik + "' material 无效: " + matStr + "，该物品已被跳过");
                         continue;
                     }
                     int amount = i.getInt("amount", 1);
@@ -416,5 +423,71 @@ public class ConfigManager {
 
     public String msg(String key) {
         return msg(key, null);
+    }
+
+    // ================================================================
+    //  配置校验
+    // ================================================================
+
+    /**
+     * 引用完整性校验：检查奖励配置中引用的怪物ID、前置奖励ID、随机池奖励ID是否存在。
+     * 在 loadMonsters / loadRewards 之后调用，错误写入 configErrors。
+     */
+    private void validateReferences() {
+        for (Map.Entry<String, RewardEntry> entry : rewards.entrySet()) {
+            String rewardId = entry.getKey();
+            RewardEntry reward = entry.getValue();
+
+            // 检查条件中引用的怪物ID
+            for (RewardEntry.Condition c : reward.getConditions()) {
+                if (c.getType() == RewardEntry.ConditionType.DAMAGE
+                        || c.getType() == RewardEntry.ConditionType.KILLS) {
+                    String mid = c.getMonsterId();
+                    if (mid == null || mid.isEmpty()) {
+                        configErrors.add("rewards.yml -> 奖励 '" + rewardId + "' 的条件缺少 monster 字段");
+                    } else if (!monsters.containsKey(mid)) {
+                        configErrors.add("rewards.yml -> 奖励 '" + rewardId + "' 引用了不存在的怪物 '" + mid + "'");
+                    }
+                }
+            }
+
+            // 检查前置奖励 requires
+            if (reward.getRequires() != null) {
+                for (String reqId : reward.getRequires()) {
+                    if (!rewards.containsKey(reqId)) {
+                        configErrors.add("rewards.yml -> 奖励 '" + rewardId + "' 的 requires 引用了不存在的奖励 '" + reqId + "'");
+                    }
+                }
+            }
+
+            // 检查随机奖励池 random-pool
+            if (reward.getPool() != null) {
+                for (String poolId : reward.getPool()) {
+                    if (!rewards.containsKey(poolId)) {
+                        configErrors.add("rewards.yml -> 奖励 '" + rewardId + "' 的 random-pool 引用了不存在的奖励 '" + poolId + "'");
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 将收集到的配置错误汇总输出到控制台。
+     * 无错误时不输出；有错误时用 severe 级别逐条输出，便于服主定位问题。
+     */
+    private void reportConfigErrors() {
+        if (configErrors.isEmpty()) {
+            return;
+        }
+        plugin.getLogger().log(Level.SEVERE, "========== 配置校验发现 " + configErrors.size() + " 个问题 ==========");
+        for (int i = 0; i < configErrors.size(); i++) {
+            plugin.getLogger().log(Level.SEVERE, "[" + (i + 1) + "/" + configErrors.size() + "] " + configErrors.get(i));
+        }
+        plugin.getLogger().log(Level.SEVERE, "================================================================");
+    }
+
+    /** 获取本次加载收集到的配置错误列表（供外部查询，如 /myloot info 展示） */
+    public List<String> getConfigErrors() {
+        return new ArrayList<>(configErrors);
     }
 }
