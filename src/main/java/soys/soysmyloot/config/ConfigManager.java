@@ -35,6 +35,15 @@ public class ConfigManager {
     private boolean trackProjectile;
     private boolean trackIndirect;
 
+    // ---- 领取反馈（音效与粒子） ----
+    private boolean feedbackEnabled;
+    private String feedbackClaimSound;
+    private double feedbackSoundVolume;
+    private double feedbackSoundPitch;
+    private String feedbackClaimParticle;
+    private int feedbackParticleCount;
+    private double feedbackParticleOffset;
+
     // ---- 进度归属 / 世界隔离 ----
     private String scopeId;
     private boolean worldIsolation;
@@ -84,7 +93,7 @@ public class ConfigManager {
         return YamlConfiguration.loadConfiguration(file);
     }
 
-    private void loadSettings() {
+    public void loadSettings() {
         this.rawConfig = loadResource("config.yml");
         debug = rawConfig.getBoolean("debug", false);
         autoSave = rawConfig.getInt("auto-save", 300);
@@ -94,6 +103,15 @@ public class ConfigManager {
         trackIndirect = ts != null ? ts.getBoolean("indirect", false) : false;
         scopeId = ts != null ? ts.getString("scope", "player").toLowerCase() : "player";
         worldIsolation = ts != null ? ts.getBoolean("world-isolation", true) : true;
+
+        ConfigurationSection fb = rawConfig.getConfigurationSection("feedback");
+        feedbackEnabled = fb != null ? fb.getBoolean("enabled", true) : true;
+        feedbackClaimSound = fb != null ? fb.getString("claim-sound", "ENTITY_PLAYER_LEVELUP") : "ENTITY_PLAYER_LEVELUP";
+        feedbackSoundVolume = fb != null ? fb.getDouble("sound-volume", 1.0) : 1.0;
+        feedbackSoundPitch = fb != null ? fb.getDouble("sound-pitch", 1.0) : 1.0;
+        feedbackClaimParticle = fb != null ? fb.getString("claim-particle", "VILLAGER_HAPPY") : "VILLAGER_HAPPY";
+        feedbackParticleCount = fb != null ? fb.getInt("particle-count", 30) : 30;
+        feedbackParticleOffset = fb != null ? fb.getDouble("particle-offset", 0.6) : 0.6;
 
         ConfigurationSection lb = rawConfig.getConfigurationSection("leaderboard");
         leaderboardLimit = lb != null ? lb.getInt("limit", 10) : 10;
@@ -107,7 +125,7 @@ public class ConfigManager {
         seasonKeepClaims = ss != null ? ss.getBoolean("keep-claims", true) : true;
     }
 
-    private void loadMonsters() {
+    public void loadMonsters() {
         monsters.clear();
         YamlConfiguration cfg = loadResource("monsters.yml");
         ConfigurationSection section = cfg.getConfigurationSection("monsters");
@@ -133,7 +151,7 @@ public class ConfigManager {
         }
     }
 
-    private void loadRewards() {
+    public void loadRewards() {
         rewards.clear();
         YamlConfiguration cfg = loadResource("rewards.yml");
         ConfigurationSection section = cfg.getConfigurationSection("rewards");
@@ -276,7 +294,7 @@ public class ConfigManager {
         return hour * 60 + minute;
     }
 
-    private void loadMessages() {
+    public void loadMessages() {
         messages = loadResource("messages.yml");
     }
 
@@ -296,6 +314,36 @@ public class ConfigManager {
 
     public boolean isTrackIndirect() {
         return trackIndirect;
+    }
+
+    // ============ 领取反馈（音效与粒子） ============
+
+    public boolean isFeedbackEnabled() {
+        return feedbackEnabled;
+    }
+
+    public String getFeedbackClaimSound() {
+        return feedbackClaimSound;
+    }
+
+    public float getFeedbackSoundVolume() {
+        return (float) feedbackSoundVolume;
+    }
+
+    public float getFeedbackSoundPitch() {
+        return (float) feedbackSoundPitch;
+    }
+
+    public String getFeedbackClaimParticle() {
+        return feedbackClaimParticle;
+    }
+
+    public int getFeedbackParticleCount() {
+        return feedbackParticleCount;
+    }
+
+    public double getFeedbackParticleOffset() {
+        return feedbackParticleOffset;
     }
 
     // ============ 进度归属 / 世界隔离 ============

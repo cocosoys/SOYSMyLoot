@@ -77,16 +77,7 @@ public class LootCommand implements CommandExecutor, TabCompleter {
                     messageManager.send(sender, "no-permission");
                     return true;
                 }
-                config.loadAll();
-                scopeResolver.reload();
-                leaderboardManager.reload();
-                if (plugin.getServer() != null) {
-                    plugin.getServer().getScheduler().runTaskAsynchronously(plugin, leaderboardManager::refresh);
-                }
-                Map<String, String> ph = new HashMap<>();
-                ph.put("monsters", String.valueOf(config.getMonsters().size()));
-                ph.put("rewards", String.valueOf(config.getRewards().size()));
-                messageManager.send(sender, "config-reloaded", ph);
+                doReload(sender, args);
                 break;
             case "list":
                 if (!sender.hasPermission("soysmyloot.use")) {
@@ -195,7 +186,7 @@ public class LootCommand implements CommandExecutor, TabCompleter {
                 {"myloot reset <keep|full>", "清空全服进度/全部数据（管理员）"},
                 {"myloot reset <玩家> <keep|full>", "重置指定玩家进度（管理员）"},
                 {"myloot give <玩家> <奖励>", "代发奖励给指定玩家（管理员）"},
-                {"myloot reload", "重载配置（管理员）"}
+                {"myloot reload [config|monsters|rewards|messages]", "重载配置（默认全部，可指定单文件）（管理员）"}
         };
         for (String[] line : lines) {
             Map<String, String> ph = new HashMap<>();
@@ -509,6 +500,62 @@ public class LootCommand implements CommandExecutor, TabCompleter {
      *
      * @param args 完整指令参数（args[0] = "reset"）
      */
+    /**
+     * 重载配置。
+     * 用法：
+     *   /myloot reload              —— 重载全部配置
+     *   /myloot reload all          —— 重载全部配置
+     *   /myloot reload config       —— 仅重载 config.yml（设置）
+     *   /myloot reload monsters     —— 仅重载 monsters.yml
+     *   /myloot reload rewards      —— 仅重载 rewards.yml
+     *   /myloot reload messages     —— 仅重载 messages.yml
+     */
+    private void doReload(CommandSender sender, String[] args) {
+        String target = args.length >= 2 ? args[1].toLowerCase() : "all";
+
+        switch (target) {
+            case "all":
+                config.loadAll();
+                scopeResolver.reload();
+                leaderboardManager.reload();
+                refreshLeaderboardAsync();
+                Map<String, String> phAll = new HashMap<>();
+                phAll.put("monsters", String.valueOf(config.getMonsters().size()));
+                phAll.put("rewards", String.valueOf(config.getRewards().size()));
+                messageManager.send(sender, "config-reloaded", phAll);
+                break;
+            case "config":
+                config.loadSettings();
+                scopeResolver.reload();
+                leaderboardManager.reload();
+                refreshLeaderboardAsync();
+                messageManager.send(sender, "reload-single", ph("file", "config.yml"));
+                break;
+            case "monsters":
+                config.loadMonsters();
+                messageManager.send(sender, "reload-single", ph("file", "monsters.yml"));
+                break;
+            case "rewards":
+                config.loadRewards();
+                messageManager.send(sender, "reload-single", ph("file", "rewards.yml"));
+                break;
+            case "messages":
+                config.loadMessages();
+                messageManager.send(sender, "reload-single", ph("file", "messages.yml"));
+                break;
+            default:
+                messageManager.send(sender, "reload-usage");
+                break;
+        }
+    }
+
+    /** 异步刷新排行榜（封装重复逻辑） */
+    private void refreshLeaderboardAsync() {
+        if (plugin.getServer() != null) {
+            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, leaderboardManager::refresh);
+        }
+    }
+
     private void doReset(CommandSender sender, String[] args) {
         if (args.length < 2) {
             messageManager.send(sender, "reset-usage");
@@ -645,6 +692,12 @@ public class LootCommand implements CommandExecutor, TabCompleter {
                 }
             } else if (a0.equals("top")) {
                 for (String s : new String[]{"damage", "kills"}) {
+                    if (s.startsWith(args[1].toLowerCase())) {
+                        result.add(s);
+                    }
+                }
+            } else if (a0.equals("reload")) {
+                for (String s : new String[]{"all", "config", "monsters", "rewards", "messages"}) {
                     if (s.startsWith(args[1].toLowerCase())) {
                         result.add(s);
                     }

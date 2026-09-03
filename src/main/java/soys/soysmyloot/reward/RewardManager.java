@@ -1,11 +1,15 @@
 package soys.soysmyloot.reward;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import soys.soysmyloot.SOYSMyLoot;
 import soys.soysmyloot.ScopeResolver;
+import soys.soysmyloot.config.ConfigManager;
 import soys.soysmyloot.config.MessageManager;
 import soys.soysmyloot.data.DataManager;
 import soys.soysmyloot.data.PlayerData;
@@ -310,6 +314,10 @@ public class RewardManager {
         if (reward.getWeeklyLimit() > 0) {
             data.addWeeklyClaim(reward.getId(), now);
         }
+
+        // 领取成功反馈（音效 + 粒子）
+        playFeedback(player);
+
         return true;
     }
 
@@ -335,6 +343,51 @@ public class RewardManager {
             int n = Math.min(reward.getPoolCount(), poolEntries.size());
             for (int i = 0; i < n; i++) {
                 issueEffects(player, poolEntries.get(i), 1);
+            }
+        }
+
+        // 代发成功反馈（音效 + 粒子）
+        playFeedback(player);
+    }
+
+    /**
+     * 播放领取成功反馈（音效 + 粒子）。
+     * 音效/粒子名称从 config.yml 的 feedback 节读取，无效名称在 debug 模式下输出警告。
+     * 音效仅玩家本人可闻；粒子在玩家位置生成，周围玩家可见。
+     */
+    private void playFeedback(Player player) {
+        ConfigManager config = plugin.getConfigManager();
+        if (!config.isFeedbackEnabled()) {
+            return;
+        }
+
+        // 播放音效
+        String soundName = config.getFeedbackClaimSound();
+        if (soundName != null && !soundName.trim().isEmpty()) {
+            try {
+                Sound sound = Sound.valueOf(soundName);
+                player.playSound(player.getLocation(), sound,
+                        config.getFeedbackSoundVolume(), config.getFeedbackSoundPitch());
+            } catch (IllegalArgumentException e) {
+                if (config.isDebug()) {
+                    plugin.getLogger().warning("[反馈] 无效的音效名称: " + soundName);
+                }
+            }
+        }
+
+        // 播放粒子
+        String particleName = config.getFeedbackClaimParticle();
+        if (particleName != null && !particleName.trim().isEmpty()) {
+            try {
+                Particle particle = Particle.valueOf(particleName);
+                Location loc = player.getLocation().add(0, 1.0, 0);
+                double offset = config.getFeedbackParticleOffset();
+                player.getWorld().spawnParticle(particle, loc,
+                        config.getFeedbackParticleCount(), offset, offset, offset);
+            } catch (IllegalArgumentException e) {
+                if (config.isDebug()) {
+                    plugin.getLogger().warning("[反馈] 无效的粒子名称: " + particleName);
+                }
             }
         }
     }

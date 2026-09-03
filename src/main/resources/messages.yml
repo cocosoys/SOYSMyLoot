@@ -21,6 +21,8 @@ no-permission: "{prefix}&c你没有权限执行此操作！"
 player-only: "{prefix}&c该指令只能由玩家执行！"
 unknown-command: "{prefix}&c未知指令，使用 &e/myloot help &c查看帮助"
 config-reloaded: "{prefix}&a配置已重新加载！共加载 &e{monsters} &a个怪物，&e{rewards} &a个奖励。"
+reload-single: "{prefix}&a已重载 &e{file} &a配置"
+reload-usage: "{prefix}&c用法：&e/myloot reload [all|config|monsters|rewards|messages]"
 no-data: "{prefix}&c暂无数据"
 
 reward-not-found: "{prefix}&c找不到ID为 &e{id} &c的奖励！"

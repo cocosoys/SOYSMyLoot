@@ -26,6 +26,30 @@ tracking:
   world-isolation: true
 
 # =========================================
+# 领取反馈（音效与粒子）
+# ------------------------------------------------------------
+# 玩家成功领取奖励时播放的音效与粒子效果，提升交互体验。
+# 所有音效/粒子名称使用 Spigot 1.12.2 原生枚举名，留空则不播放。
+# =========================================
+feedback:
+  # 是否启用领取反馈
+  enabled: true
+  # 领取成功音效（Spigot Sound 枚举名，留空不播放）
+  # 推荐：ENTITY_PLAYER_LEVELUP / UI_TOAST_CHALLENGE_COMPLETE / ENTITY_EXPERIENCE_ORB_PICKUP / BLOCK_NOTE_BLOCK_PLING
+  claim-sound: ENTITY_PLAYER_LEVELUP
+  # 音效音量 (0.0 - 1.0，超过1.0可扩大传播范围)
+  sound-volume: 1.0
+  # 音效音调 (0.5 - 2.0，1.0为原调)
+  sound-pitch: 1.0
+  # 领取成功粒子（Spigot Particle 枚举名，留空不播放）
+  # 推荐：VILLAGER_HAPPY / TOTEM / HEART / NOTE / CLOUD / FLAME
+  claim-particle: VILLAGER_HAPPY
+  # 粒子数量
+  particle-count: 30
+  # 粒子扩散范围（相对于玩家位置的 XYZ 偏移）
+  particle-offset: 0.6
+
+# =========================================
 # 数据存储
 # ----------------------------------------------------------------------------
 # 三种后端可同时开启，优先级固定为：MYSQL > SQLITE > YAML
