@@ -443,67 +443,163 @@ public abstract class SqlStorage implements DataStorage {
 
     private void writePlayer(Connection conn, PlayerData data) throws SQLException {
         String uuid = data.getUuid().toString();
+        writeProgress(conn, uuid, data);
+        writeClaims(conn, uuid, data);
+        writeMeta(conn, uuid, data);
+    }
 
-        // 整体重写 progress
-        try (PreparedStatement del = conn.prepareStatement(
-                "DELETE FROM " + progressTable() + " WHERE player_uuid = ?")) {
-            del.setString(1, uuid);
-            del.executeUpdate();
-        }
-        Set<String> monsterIds = new HashSet<>(data.getDamageMap().keySet());
-        monsterIds.addAll(data.getKillMap().keySet());
-        if (!monsterIds.isEmpty()) {
-            String sql = "REPLACE INTO " + progressTable()
-                    + " (player_uuid, world, monster_id, damage, kills) VALUES (?, ?, ?, ?, ?)";
-            try (PreparedStatement statement = conn.prepareStatement(sql)) {
-                for (String composite : monsterIds) {
-                    String[] parts = PlayerData.splitKey(composite);
-                    String world = parts[0];
-                    String mid = parts[1];
-                    statement.setString(1, uuid);
-                    statement.setString(2, world);
-                    statement.setString(3, mid);
-                    statement.setDouble(4, data.getDamage(world, mid));
-                    statement.setInt(5, data.getKills(world, mid));
-                    statement.addBatch();
+    /**
+     * 增量写入进度：只 REPLACE 新增/变化的行，只 DELETE 已消失的行。
+     * 相比原先“先删光再全量写”，单次保存的写入量与变化量成正比，而非与数据总量成正比。
+     */
+    private void writeProgress(Connection conn, String uuid, PlayerData data) throws SQLException {
+        Map<String, double[]> existing = new HashMap<>();
+        try (PreparedStatement select = conn.prepareStatement(
+                "SELECT world, monster_id, damage, kills FROM " + progressTable() + " WHERE player_uuid = ?")) {
+            select.setString(1, uuid);
+            try (ResultSet rs = select.executeQuery()) {
+                while (rs.next()) {
+                    existing.put(PlayerData.keyOf(rs.getString("world"), rs.getString("monster_id")),
+                            new double[]{rs.getDouble("damage"), rs.getInt("kills")});
                 }
-                statement.executeBatch();
             }
         }
 
-        // 整体重写 claims
-        try (PreparedStatement del = conn.prepareStatement(
-                "DELETE FROM " + claimsTable() + " WHERE player_uuid = ?")) {
-            del.setString(1, uuid);
-            del.executeUpdate();
-        }
-        Set<String> rewardIds = new HashSet<>(data.getLastClaimMap().keySet());
-        rewardIds.addAll(data.getClaimCountMap().keySet());
-        if (!rewardIds.isEmpty()) {
-            String sql = "REPLACE INTO " + claimsTable()
-                    + " (player_uuid, reward_id, last_claim, claim_count, daily_count, weekly_count, daily_start, weekly_start)"
-                    + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-            try (PreparedStatement statement = conn.prepareStatement(sql)) {
-                for (String rid : rewardIds) {
-                    statement.setString(1, uuid);
-                    statement.setString(2, rid);
-                    statement.setLong(3, data.getLastClaim(rid));
-                    statement.setInt(4, data.getClaimCount(rid));
-                    statement.setInt(5, data.getDailyClaimCountMap().getOrDefault(rid, 0));
-                    statement.setInt(6, data.getWeeklyClaimCountMap().getOrDefault(rid, 0));
-                    statement.setLong(7, data.getDailyClaimStartMap().getOrDefault(rid, 0L));
-                    statement.setLong(8, data.getWeeklyClaimStartMap().getOrDefault(rid, 0L));
-                    statement.addBatch();
+        Set<String> current = new HashSet<>(data.getDamageMap().keySet());
+        current.addAll(data.getKillMap().keySet());
+
+        // 删除已不存在的进度行（赛季重置等）
+        try (PreparedStatement delete = conn.prepareStatement(
+                "DELETE FROM " + progressTable() + " WHERE player_uuid = ? AND world = ? AND monster_id = ?")) {
+            for (String composite : existing.keySet()) {
+                if (current.contains(composite)) {
+                    continue;
                 }
-                statement.executeBatch();
+                String[] parts = PlayerData.splitKey(composite);
+                delete.setString(1, uuid);
+                delete.setString(2, parts[0]);
+                delete.setString(3, parts[1]);
+                delete.addBatch();
+            }
+            delete.executeBatch();
+        }
+
+        if (current.isEmpty()) {
+            return;
+        }
+        try (PreparedStatement upsert = conn.prepareStatement(
+                "REPLACE INTO " + progressTable()
+                        + " (player_uuid, world, monster_id, damage, kills) VALUES (?, ?, ?, ?, ?)")) {
+            for (String composite : current) {
+                String[] parts = PlayerData.splitKey(composite);
+                String world = parts[0];
+                String mid = parts[1];
+                double damage = data.getDamage(world, mid);
+                int kills = data.getKills(world, mid);
+                double[] old = existing.get(composite);
+                if (old != null && old[0] == damage && (int) old[1] == kills) {
+                    continue;
+                }
+                upsert.setString(1, uuid);
+                upsert.setString(2, world);
+                upsert.setString(3, mid);
+                upsert.setDouble(4, damage);
+                upsert.setInt(5, kills);
+                upsert.addBatch();
+            }
+            upsert.executeBatch();
+        }
+    }
+
+    /** 增量写入领取记录，策略同 {@link #writeProgress(Connection, String, PlayerData)} */
+    private void writeClaims(Connection conn, String uuid, PlayerData data) throws SQLException {
+        Map<String, long[]> existing = new HashMap<>();
+        try (PreparedStatement select = conn.prepareStatement(
+                "SELECT reward_id, last_claim, claim_count, daily_count, weekly_count, daily_start, weekly_start"
+                        + " FROM " + claimsTable() + " WHERE player_uuid = ?")) {
+            select.setString(1, uuid);
+            try (ResultSet rs = select.executeQuery()) {
+                while (rs.next()) {
+                    existing.put(rs.getString("reward_id"), new long[]{
+                            rs.getLong("last_claim"),
+                            rs.getInt("claim_count"),
+                            rs.getInt("daily_count"),
+                            rs.getInt("weekly_count"),
+                            rs.getLong("daily_start"),
+                            rs.getLong("weekly_start")
+                    });
+                }
             }
         }
 
-        // 在线时长
+        Set<String> current = new HashSet<>(data.getLastClaimMap().keySet());
+        current.addAll(data.getClaimCountMap().keySet());
+        current.addAll(data.getDailyClaimCountMap().keySet());
+        current.addAll(data.getWeeklyClaimCountMap().keySet());
+
+        try (PreparedStatement delete = conn.prepareStatement(
+                "DELETE FROM " + claimsTable() + " WHERE player_uuid = ? AND reward_id = ?")) {
+            for (String rewardId : existing.keySet()) {
+                if (current.contains(rewardId)) {
+                    continue;
+                }
+                delete.setString(1, uuid);
+                delete.setString(2, rewardId);
+                delete.addBatch();
+            }
+            delete.executeBatch();
+        }
+
+        if (current.isEmpty()) {
+            return;
+        }
+        try (PreparedStatement upsert = conn.prepareStatement(
+                "REPLACE INTO " + claimsTable()
+                        + " (player_uuid, reward_id, last_claim, claim_count, daily_count, weekly_count, daily_start, weekly_start)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+            for (String rewardId : current) {
+                long lastClaim = data.getLastClaim(rewardId);
+                int claimCount = data.getClaimCount(rewardId);
+                int dailyCount = data.getDailyClaimCountMap().getOrDefault(rewardId, 0);
+                int weeklyCount = data.getWeeklyClaimCountMap().getOrDefault(rewardId, 0);
+                long dailyStart = data.getDailyClaimStartMap().getOrDefault(rewardId, 0L);
+                long weeklyStart = data.getWeeklyClaimStartMap().getOrDefault(rewardId, 0L);
+                long[] old = existing.get(rewardId);
+                if (old != null && old[0] == lastClaim && (int) old[1] == claimCount
+                        && (int) old[2] == dailyCount && (int) old[3] == weeklyCount
+                        && old[4] == dailyStart && old[5] == weeklyStart) {
+                    continue;
+                }
+                upsert.setString(1, uuid);
+                upsert.setString(2, rewardId);
+                upsert.setLong(3, lastClaim);
+                upsert.setInt(4, claimCount);
+                upsert.setInt(5, dailyCount);
+                upsert.setInt(6, weeklyCount);
+                upsert.setLong(7, dailyStart);
+                upsert.setLong(8, weeklyStart);
+                upsert.addBatch();
+            }
+            upsert.executeBatch();
+        }
+    }
+
+    /** 在线时长无变化时不写库 */
+    private void writeMeta(Connection conn, String uuid, PlayerData data) throws SQLException {
+        long minutes = data.getOnlineMinutes();
+        try (PreparedStatement select = conn.prepareStatement(
+                "SELECT online_minutes FROM " + metaTable() + " WHERE player_uuid = ?")) {
+            select.setString(1, uuid);
+            try (ResultSet rs = select.executeQuery()) {
+                if (rs.next() && rs.getLong("online_minutes") == minutes) {
+                    return;
+                }
+            }
+        }
         try (PreparedStatement statement = conn.prepareStatement(
                 "REPLACE INTO " + metaTable() + " (player_uuid, online_minutes) VALUES (?, ?)")) {
             statement.setString(1, uuid);
-            statement.setLong(2, data.getOnlineMinutes());
+            statement.setLong(2, minutes);
             statement.executeUpdate();
         }
     }

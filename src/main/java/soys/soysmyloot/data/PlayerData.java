@@ -14,6 +14,11 @@ import java.util.UUID;
  * <p>
  * 复合键格式：{@code world + SEP + monsterId}，其中 world 为空字符串表示「不按世界隔离」。
  * </p>
+ * <p>
+ * 线程模型：所有实例方法均加锁，主线程写入与存储线程读取通过 {@link #snapshot()}
+ * 隔离；每次写操作递增 {@link #getVersion()}，保存完成后只有版本未变化才清除脏标记，
+ * 避免异步落盘期间的新写入被误清除。
+ * </p>
  */
 public class PlayerData {
 
@@ -32,7 +37,9 @@ public class PlayerData {
     private final Map<String, Long> dailyClaimStartMap = new HashMap<>();
     private final Map<String, Integer> weeklyClaimCountMap = new HashMap<>();
     private final Map<String, Long> weeklyClaimStartMap = new HashMap<>();
-    private boolean dirty = false;
+    private volatile boolean dirty = false;
+    /** 写版本号：每次数据变更 +1，供异步保存判断期间是否有新写入 */
+    private long version = 0;
 
     public PlayerData(UUID uuid) {
         this.uuid = uuid;
@@ -42,17 +49,51 @@ public class PlayerData {
         return uuid;
     }
 
-    public boolean isDirty() {
+    public synchronized boolean isDirty() {
         return dirty;
     }
 
-    public void setDirty(boolean dirty) {
-        this.dirty = dirty;
+    /** 当前写版本号 */
+    public synchronized long getVersion() {
+        return version;
     }
 
-    /** 清除脏标记（保存成功后由存储层调用） */
-    public void clearDirty() {
+    /** 清除脏标记（仅用于加载完成的新对象） */
+    public synchronized void clearDirty() {
         dirty = false;
+    }
+
+    /**
+     * 保存成功后调用：仅当版本仍为保存时的版本才清除脏标记，
+     * 避免保存期间产生的新写入被误标为已持久化。
+     */
+    public synchronized boolean clearDirtyIfVersion(long expectedVersion) {
+        if (version == expectedVersion) {
+            dirty = false;
+            return true;
+        }
+        return false;
+    }
+
+    /** 生成一致性快照，供存储线程序列化，避免与主线程写入并发 */
+    public synchronized PlayerData snapshot() {
+        PlayerData copy = new PlayerData(uuid);
+        copy.damageMap.putAll(damageMap);
+        copy.killMap.putAll(killMap);
+        copy.lastClaimMap.putAll(lastClaimMap);
+        copy.claimCountMap.putAll(claimCountMap);
+        copy.dailyClaimCountMap.putAll(dailyClaimCountMap);
+        copy.dailyClaimStartMap.putAll(dailyClaimStartMap);
+        copy.weeklyClaimCountMap.putAll(weeklyClaimCountMap);
+        copy.weeklyClaimStartMap.putAll(weeklyClaimStartMap);
+        copy.onlineMinutes = onlineMinutes;
+        copy.version = version;
+        return copy;
+    }
+
+    private void markDirty() {
+        dirty = true;
+        version++;
     }
 
     // ================================================================
@@ -77,28 +118,28 @@ public class PlayerData {
     //  伤害 / 击杀（世界隔离）
     // ================================================================
 
-    public double getDamage(String world, String monsterId) {
+    public synchronized double getDamage(String world, String monsterId) {
         return damageMap.getOrDefault(keyOf(world, monsterId), 0.0);
     }
 
-    public int getKills(String world, String monsterId) {
+    public synchronized int getKills(String world, String monsterId) {
         return killMap.getOrDefault(keyOf(world, monsterId), 0);
     }
 
-    public void addDamage(String world, String monsterId, double amount) {
+    public synchronized void addDamage(String world, String monsterId, double amount) {
         String key = keyOf(world, monsterId);
         damageMap.put(key, damageMap.getOrDefault(key, 0.0) + amount);
-        dirty = true;
+        markDirty();
     }
 
-    public void addKill(String world, String monsterId, int count) {
+    public synchronized void addKill(String world, String monsterId, int count) {
         String key = keyOf(world, monsterId);
         killMap.put(key, killMap.getOrDefault(key, 0) + count);
-        dirty = true;
+        markDirty();
     }
 
     /** 进度总量（跨所有世界与怪物），供排行榜聚合 */
-    public double getTotalDamage() {
+    public synchronized double getTotalDamage() {
         double sum = 0;
         for (double v : damageMap.values()) {
             sum += v;
@@ -106,7 +147,7 @@ public class PlayerData {
         return sum;
     }
 
-    public int getTotalKills() {
+    public synchronized int getTotalKills() {
         int sum = 0;
         for (int v : killMap.values()) {
             sum += v;
@@ -118,37 +159,37 @@ public class PlayerData {
     //  领取记录
     // ================================================================
 
-    public long getLastClaim(String rewardId) {
+    public synchronized long getLastClaim(String rewardId) {
         return lastClaimMap.getOrDefault(rewardId, 0L);
     }
 
-    public int getClaimCount(String rewardId) {
+    public synchronized int getClaimCount(String rewardId) {
         return claimCountMap.getOrDefault(rewardId, 0);
     }
 
-    public void setClaimed(String rewardId, long epochSeconds) {
+    public synchronized void setClaimed(String rewardId, long epochSeconds) {
         lastClaimMap.put(rewardId, epochSeconds);
         claimCountMap.put(rewardId, getClaimCount(rewardId) + 1);
-        dirty = true;
+        markDirty();
     }
 
     // ================================================================
     //  供存储层加载使用
     // ================================================================
 
-    public void setDamage(String world, String monsterId, double v) {
+    public synchronized void setDamage(String world, String monsterId, double v) {
         damageMap.put(keyOf(world, monsterId), v);
     }
 
-    public void setKill(String world, String monsterId, int v) {
+    public synchronized void setKill(String world, String monsterId, int v) {
         killMap.put(keyOf(world, monsterId), v);
     }
 
-    public void setLastClaim(String rewardId, long v) {
+    public synchronized void setLastClaim(String rewardId, long v) {
         lastClaimMap.put(rewardId, v);
     }
 
-    public void setClaimCount(String rewardId, int v) {
+    public synchronized void setClaimCount(String rewardId, int v) {
         claimCountMap.put(rewardId, v);
     }
 
@@ -156,19 +197,19 @@ public class PlayerData {
     //  累计在线时长（分钟）
     // ================================================================
 
-    public long getOnlineMinutes() {
+    public synchronized long getOnlineMinutes() {
         return onlineMinutes;
     }
 
-    public void setOnlineMinutes(long v) {
+    public synchronized void setOnlineMinutes(long v) {
         onlineMinutes = v;
-        dirty = true;
+        markDirty();
     }
 
-    public void addOnlineMinutes(long v) {
+    public synchronized void addOnlineMinutes(long v) {
         if (v > 0) {
             onlineMinutes += v;
-            dirty = true;
+            markDirty();
         }
     }
 
@@ -177,7 +218,7 @@ public class PlayerData {
     // ================================================================
 
     /** 当前周期内已领取次数（自动处理跨天/跨周重置） */
-    public int getDailyClaimed(String rewardId) {
+    public synchronized int getDailyClaimed(String rewardId) {
         long now = System.currentTimeMillis() / 1000;
         long todayStart = dayStartEpoch(now);
         if (dailyClaimStartMap.getOrDefault(rewardId, 0L) < todayStart) {
@@ -187,7 +228,7 @@ public class PlayerData {
         return dailyClaimCountMap.getOrDefault(rewardId, 0);
     }
 
-    public int getWeeklyClaimed(String rewardId) {
+    public synchronized int getWeeklyClaimed(String rewardId) {
         long now = System.currentTimeMillis() / 1000;
         long weekStart = weekStartEpoch(now);
         if (weeklyClaimStartMap.getOrDefault(rewardId, 0L) < weekStart) {
@@ -198,32 +239,32 @@ public class PlayerData {
     }
 
     /** 增加一次每日领取计数（必要时先重置周期） */
-    public void addDailyClaim(String rewardId, long nowEpochSeconds) {
+    public synchronized void addDailyClaim(String rewardId, long nowEpochSeconds) {
         long todayStart = dayStartEpoch(nowEpochSeconds);
         if (dailyClaimStartMap.getOrDefault(rewardId, 0L) < todayStart) {
             dailyClaimCountMap.put(rewardId, 0);
             dailyClaimStartMap.put(rewardId, todayStart);
         }
         dailyClaimCountMap.put(rewardId, dailyClaimCountMap.getOrDefault(rewardId, 0) + 1);
-        dirty = true;
+        markDirty();
     }
 
-    public void addWeeklyClaim(String rewardId, long nowEpochSeconds) {
+    public synchronized void addWeeklyClaim(String rewardId, long nowEpochSeconds) {
         long weekStart = weekStartEpoch(nowEpochSeconds);
         if (weeklyClaimStartMap.getOrDefault(rewardId, 0L) < weekStart) {
             weeklyClaimCountMap.put(rewardId, 0);
             weeklyClaimStartMap.put(rewardId, weekStart);
         }
         weeklyClaimCountMap.put(rewardId, weeklyClaimCountMap.getOrDefault(rewardId, 0) + 1);
-        dirty = true;
+        markDirty();
     }
 
-    public void setDailyClaim(String rewardId, int count, long start) {
+    public synchronized void setDailyClaim(String rewardId, int count, long start) {
         dailyClaimCountMap.put(rewardId, count);
         dailyClaimStartMap.put(rewardId, start);
     }
 
-    public void setWeeklyClaim(String rewardId, int count, long start) {
+    public synchronized void setWeeklyClaim(String rewardId, int count, long start) {
         weeklyClaimCountMap.put(rewardId, count);
         weeklyClaimStartMap.put(rewardId, start);
     }
@@ -258,14 +299,14 @@ public class PlayerData {
     // ================================================================
 
     /** 清空全部进度（伤害/击杀），保留领取记录。赛季重置（保留领取）时调用 */
-    public void clearProgress() {
+    public synchronized void clearProgress() {
         damageMap.clear();
         killMap.clear();
-        dirty = true;
+        markDirty();
     }
 
     /** 清空全部数据（进度 + 领取）。赛季完全重置时调用 */
-    public void clearAll() {
+    public synchronized void clearAll() {
         damageMap.clear();
         killMap.clear();
         lastClaimMap.clear();
@@ -274,38 +315,38 @@ public class PlayerData {
         dailyClaimStartMap.clear();
         weeklyClaimCountMap.clear();
         weeklyClaimStartMap.clear();
-        dirty = true;
+        markDirty();
     }
 
-    public Map<String, Double> getDamageMap() {
+    public synchronized Map<String, Double> getDamageMap() {
         return damageMap;
     }
 
-    public Map<String, Integer> getKillMap() {
+    public synchronized Map<String, Integer> getKillMap() {
         return killMap;
     }
 
-    public Map<String, Long> getLastClaimMap() {
+    public synchronized Map<String, Long> getLastClaimMap() {
         return lastClaimMap;
     }
 
-    public Map<String, Integer> getClaimCountMap() {
+    public synchronized Map<String, Integer> getClaimCountMap() {
         return claimCountMap;
     }
 
-    public Map<String, Integer> getDailyClaimCountMap() {
+    public synchronized Map<String, Integer> getDailyClaimCountMap() {
         return dailyClaimCountMap;
     }
 
-    public Map<String, Long> getDailyClaimStartMap() {
+    public synchronized Map<String, Long> getDailyClaimStartMap() {
         return dailyClaimStartMap;
     }
 
-    public Map<String, Integer> getWeeklyClaimCountMap() {
+    public synchronized Map<String, Integer> getWeeklyClaimCountMap() {
         return weeklyClaimCountMap;
     }
 
-    public Map<String, Long> getWeeklyClaimStartMap() {
+    public synchronized Map<String, Long> getWeeklyClaimStartMap() {
         return weeklyClaimStartMap;
     }
 }

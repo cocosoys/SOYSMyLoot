@@ -3,6 +3,7 @@ package soys.soysmyloot.data;
 import soys.soysmyloot.SOYSMyLoot;
 import soys.soysmyloot.storage.StorageManager;
 
+import java.util.Collection;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -25,6 +26,19 @@ public class DataManager {
     public DataManager(SOYSMyLoot plugin, StorageManager storageManager) {
         this.plugin = plugin;
         this.storageManager = storageManager;
+    }
+
+    /**
+     * 异步预加载玩家数据到缓存（玩家加入 / 插件启用时调用）。
+     * <p>用于把手游首次访问时的同步读库从主线程（如伤害事件）转移到存储线程；
+     * 若预加载尚未完成而业务已取数，{@link #getData(UUID)} 仍会同步兜底。</p>
+     */
+    public void preload(UUID uuid) {
+        if (cache.containsKey(uuid)) {
+            return;
+        }
+        storageManager.loadPlayerAsync(uuid, data -> cache.putIfAbsent(
+                uuid, data != null ? data : new PlayerData(uuid)));
     }
 
     /** 获取玩家数据（优先缓存，否则从主存储加载） */
@@ -96,5 +110,10 @@ public class DataManager {
             data.clearProgress();
         }
         storageManager.savePlayerAsync(data);
+    }
+
+    /** 返回当前缓存中的所有玩家数据视图（只读遍历用） */
+    public Collection<PlayerData> getCachedPlayers() {
+        return cache.values();
     }
 }

@@ -90,7 +90,7 @@ public final class SeasonManager {
             }
             if (announce) {
                 messageManager.send(Bukkit.getConsoleSender(),
-                        keepClaims ? "season-reset-keep" : "season-reset-full");
+                        keepClaims ? "soysmyloot.command.data.season-reset-keep" : "soysmyloot.command.data.season-reset-full");
             }
             plugin.getLogger().info("[赛季] 进度已重置（keepClaims=" + keepClaims + "）");
         } catch (Exception e) {

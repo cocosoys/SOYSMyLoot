@@ -315,16 +315,19 @@ public class StorageManager {
         if (data == null) {
             return;
         }
+        // 快照隔离：存储线程只读取快照，避免与主线程写入并发导致 HashMap 结构异常
+        PlayerData snapshot = data.snapshot();
+        long version = snapshot.getVersion();
         try {
-            primary.savePlayer(data);
-            data.clearDirty();
+            primary.savePlayer(snapshot);
+            data.clearDirtyIfVersion(version);
             debug("已保存玩家 " + data.getUuid() + " 到 " + primary.getType().getId());
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE,
                     "保存玩家 " + data.getUuid() + " 到主存储失败: " + e.getMessage(), e);
             return;
         }
-        mirror(storage -> storage.savePlayer(data), "保存玩家 " + data.getUuid());
+        mirror(storage -> storage.savePlayer(snapshot), "保存玩家 " + data.getUuid());
     }
 
     /**
@@ -343,17 +346,21 @@ public class StorageManager {
         if (valid.isEmpty()) {
             return;
         }
+        List<PlayerData> snapshots = new ArrayList<>(valid.size());
+        for (PlayerData data : valid) {
+            snapshots.add(data.snapshot());
+        }
         try {
-            primary.savePlayers(valid);
-            for (PlayerData data : valid) {
-                data.clearDirty();
+            primary.savePlayers(snapshots);
+            for (int i = 0; i < valid.size(); i++) {
+                valid.get(i).clearDirtyIfVersion(snapshots.get(i).getVersion());
             }
             debug("已批量保存 " + valid.size() + " 名玩家到 " + primary.getType().getId());
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE, "批量保存到主存储失败: " + e.getMessage(), e);
             return;
         }
-        mirror(storage -> storage.savePlayers(valid), "批量保存 " + valid.size() + " 名玩家");
+        mirror(storage -> storage.savePlayers(snapshots), "批量保存 " + valid.size() + " 名玩家");
     }
 
     /**

@@ -1,0 +1,74 @@
+# ============ SOYSMyLoot English Language Pack ============
+# Flat dotted-path keys (flattened into an in-memory Map by YamlConfiguration.getKeys(true) on load).
+# Business code reads via MessageManager.get(key, args...); if a key is missing it falls back to the in-code fallback text.
+# Placeholders use {0} {1} ... (replaced positionally via String.replace("{i}", arg)).
+# Language files are stored in the plugin data folder under language/, the file name is the language code.
+# To customize, edit <server>/plugins/SOYSMyLoot/language/en_us.yml, then restart or run /myloot reload messages.
+
+soysmyloot.command.common.no-permission: "§8[§6Loot§8]§r §cYou don't have permission to do this!"
+soysmyloot.command.common.player-only: "§8[§6Loot§8]§r §cThis command can only be run by a player!"
+soysmyloot.command.common.unknown-command: "§8[§6Loot§8]§r §cUnknown command, use §e/myloot help §cto view help"
+soysmyloot.command.common.no-data: "§8[§6Loot§8]§r §cNo data available"
+
+soysmyloot.command.reload.success: "§8[§6Loot§8]§r §aConfiguration reloaded! Loaded §e{0} §amonsters and §e{1} §arewards."
+soysmyloot.command.reload.single: "§8[§6Loot§8]§r §aReloaded §e{0} §aconfiguration"
+soysmyloot.command.reload.usage: "§8[§6Loot§8]§r §cUsage: §e/myloot reload [all|config|monsters|rewards|messages]"
+
+soysmyloot.command.reward.not-found: "§8[§6Loot§8]§r §cReward with ID §e{0} §cnot found!"
+soysmyloot.command.reward.claimed: "§8[§6Loot§8]§r §cYou have already claimed this reward!"
+soysmyloot.command.reward.cooldown: "§8[§6Loot§8]§r §cReward is on cooldown, wait §e{0} §cseconds!"
+soysmyloot.command.reward.conditions-not-met: "§8[§6Loot§8]§r §cYou do not meet the requirements for this reward!"
+soysmyloot.command.reward.claimed-success: "§8[§6Loot§8]§r §aSuccessfully claimed reward §e{0}§a!"
+soysmyloot.command.reward.daily-limit: "§8[§6Loot§8]§r §cDaily claim limit reached for this reward!"
+soysmyloot.command.reward.weekly-limit: "§8[§6Loot§8]§r §cWeekly claim limit reached for this reward!"
+soysmyloot.command.reward.partial-not-enough: "§8[§6Loot§8]§r §cProgress is not enough for one claim, keep dealing damage/kills!"
+
+soysmyloot.command.list.header: "§8[§6Loot§8]§r §6§m                      §r §eAvailable Rewards §6§m                      "
+soysmyloot.command.list.item-available: "§a[✔] §e{0} §7- §f{1}"
+soysmyloot.command.list.item-claimed: "§c[✘] §e{0} §7- §f{1} §8(Claimed)"
+soysmyloot.command.list.item-locked: "§7[✘] §e{0} §7- §f{1} §8(Locked)"
+soysmyloot.command.list.empty: "§8[§6Loot§8]§r §cNo rewards configured."
+soysmyloot.command.list.footer: "§6§m                                                                      "
+
+soysmyloot.command.progress.header: "§8[§6Loot§8]§r §6§m                      §r §eProgress §6§m                      "
+soysmyloot.command.progress.item: "§e{0}§7: Damage §a{1} §7| Kills §a{2}"
+soysmyloot.command.progress.footer: "§6§m                                                                      "
+
+soysmyloot.command.help.header: "§8[§6Loot§8]§r §6§m                      §r §eSOYSMyLoot Help §6§m                      "
+soysmyloot.command.help.line: "§e/{0} §7- {1}"
+soysmyloot.command.help.footer: "§6§m                                                                      "
+
+soysmyloot.command.info.basic: "§7Plugin: §eSOYSMyLoot §7| Version: §e{0} §7| Author: §eSoys"
+soysmyloot.command.info.database: "§7Storage: §e{0} §7| Tracked: §e{1} §7monsters §e{2} §7rewards"
+soysmyloot.command.info.locale: "§7Language: §e{0}"
+
+soysmyloot.command.warn.no-vault: "§8[§6Loot§8]§r §cMoney reward failed: Vault or economy plugin not installed"
+soysmyloot.command.warn.no-playerpoints: "§8[§6Loot§8]§r §cPoints reward failed: PlayerPoints not installed"
+
+soysmyloot.command.leaderboard.header-damage: "§8[§6Loot§8]§r §6§m                      §r §eDamage Leaderboard §6§m                      "
+soysmyloot.command.leaderboard.header-kills: "§8[§6Loot§8]§r §6§m                      §r §eKills Leaderboard §6§m                      "
+soysmyloot.command.leaderboard.line: "§e#{0} §f{1} §7- Damage §a{2} §7| Kills §a{3}"
+soysmyloot.command.leaderboard.empty: "§8[§6Loot§8]§r §cNo leaderboard data"
+soysmyloot.command.leaderboard.self-damage: "§8[§6Loot§8]§r §7Your damage rank: §e#{0} §7| Damage §a{1} §7| Kills §a{2}"
+soysmyloot.command.leaderboard.self-kills: "§8[§6Loot§8]§r §7Your kills rank: §e#{0} §7| Damage §a{1} §7| Kills §a{2}"
+soysmyloot.command.leaderboard.unranked: "§8[§6Loot§8]§r §7You are not on the leaderboard yet"
+
+soysmyloot.command.data.export-success: "§8[§6Loot§8]§r §aExported §e{0} §aplayers' data to §e{1}"
+soysmyloot.command.data.export-fail: "§8[§6Loot§8]§r §cExport failed: {0}"
+soysmyloot.command.data.import-success: "§8[§6Loot§8]§r §aImported §e{1} §aplayers' data from §e{0}"
+soysmyloot.command.data.import-fail: "§8[§6Loot§8]§r §cImport failed: {0}"
+soysmyloot.command.data.migrate-success: "§8[§6Loot§8]§r §aMigrated §e{0} §aplayers' data: §e{1} §7→ §e{2}"
+soysmyloot.command.data.migrate-fail: "§8[§6Loot§8]§r §cMigration failed: {0}"
+soysmyloot.command.data.migrate-unknown: "§8[§6Loot§8]§r §cUnknown storage backend §e{0} §c, available: yaml / sqlite / mysql"
+soysmyloot.command.data.reset-progress: "§8[§6Loot§8]§r §aAll progress cleared (claim records preserved)"
+soysmyloot.command.data.reset-full: "§8[§6Loot§8]§r §cAll data wiped (including claim records)!"
+soysmyloot.command.data.reset-usage: "§8[§6Loot§8]§r §cUsage: §e/myloot reset <keep|full> §7or §e/myloot reset <player> <keep|full>"
+soysmyloot.command.data.reset-player-usage: "§8[§6Loot§8]§r §cUsage: §e/myloot reset <player> <keep|full>"
+soysmyloot.command.data.reset-player-progress: "§8[§6Loot§8]§r §aProgress for §e{0} §ahas been reset (claim records preserved)"
+soysmyloot.command.data.reset-player-full: "§8[§6Loot§8]§r §cAll data for §e{0} §chas been wiped (including claim records)!"
+soysmyloot.command.data.player-not-found: "§8[§6Loot§8]§r §cPlayer §e{0} §cnot found"
+soysmyloot.command.data.player-not-online: "§8[§6Loot§8]§r §cPlayer §e{0} §cis not online, give requires online players"
+soysmyloot.command.data.give-usage: "§8[§6Loot§8]§r §cUsage: §e/myloot give <player> <rewardId>"
+soysmyloot.command.data.give-success: "§8[§6Loot§8]§r §aGiven reward §e{1} §ato §e{0} §a(ID: {2})"
+soysmyloot.command.data.season-reset-keep: "§8[§6Loot§8]§r §6[Season] §aNew season started, progress cleared (claim records preserved)"
+soysmyloot.command.data.season-reset-full: "§8[§6Loot§8]§r §6[Season] §cNew season started, all data wiped"

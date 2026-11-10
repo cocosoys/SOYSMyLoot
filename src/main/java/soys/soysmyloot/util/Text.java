@@ -106,6 +106,37 @@ public final class Text {
     }
 
     /**
+     * 生成固定宽度的文本进度条，已填充部分为绿色（&amp;a），未填充部分为灰色（&amp;7）。
+     * <p>例如 ratio=0.45, width=10 -&gt; {@code &a■■■■■&7□□□□□}（调用方需再经 {@link #color(String)} 翻译）。</p>
+     *
+     * @param ratio 完成比例（自动钳制到 0.0 ~ 1.0）
+     * @param width 总格数（至少 1）
+     */
+    public static String progressBar(double ratio, int width) {
+        if (width < 1) {
+            width = 1;
+        }
+        if (Double.isNaN(ratio) || ratio < 0) {
+            ratio = 0;
+        }
+        if (ratio > 1) {
+            ratio = 1;
+        }
+        int filled = (int) Math.round(ratio * width);
+        if (filled > width) {
+            filled = width;
+        }
+        StringBuilder sb = new StringBuilder("&a");
+        for (int i = 0; i < width; i++) {
+            if (i == filled) {
+                sb.append("&7");
+            }
+            sb.append(i < filled ? '\u25A0' : '\u25A1');
+        }
+        return sb.toString();
+    }
+
+    /**
      * 安全地将字符串解析为 int，失败时返回默认值。
      */
     public static int parseInt(String input, int fallback) {

@@ -25,7 +25,19 @@
                 <configuration>
                     <source>${java.version}</source>
                     <target>${java.version}</target>
+                    <annotationProcessorPaths>
+                        <path>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                            <version>1.18.30</version>
+                        </path>
+                    </annotationProcessorPaths>
                 </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
@@ -45,6 +57,17 @@
             <resource>
                 <directory>src/main/resources</directory>
                 <filtering>true</filtering>
+                <excludes>
+                    <exclude>dist/**</exclude>
+                </excludes>
+            </resource>
+            <!-- 前端打包产物（含 gz 二进制）不做资源过滤，避免 MalformedInputException -->
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+                <includes>
+                    <include>dist/**</include>
+                </includes>
             </resource>
         </resources>
     </build>
@@ -111,6 +134,17 @@
         </dependency>
 
         <!--
+            SnakeYAML：用于配置校验器解析 YAML 节点树并标注行号（spigot-api 已传递依赖，
+            此处显式声明 provided 以保证编译期可见，运行时复用服务端自带的 snakeyaml）。
+        -->
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
+            <version>1.33</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!--
             JDBC 驱动说明：
             与 SOYSLinkTeam 保持一致，Spigot 1.12.2 服务端已内置 MySQL Connector/J 与 SQLite JDBC，
             因此统一使用 provided，不打包进插件，避免 jar 体积膨胀与驱动冲突。
@@ -127,6 +161,45 @@
             <artifactId>sqlite-jdbc</artifactId>
             <version>3.36.0.3</version>
             <scope>provided</scope>
+        </dependency>
+
+        <!-- ================================================================
+             SOYSHTTPOverMC（HTTP-over-MC 网关，1.4.1 core）+ MCERP（ERP 中控宿主）
+             ================================================================
+             依赖已通过 mvn install 安装到本地仓库，Maven 按 GAV 直接解析，无需
+             systemPath。运行时由服务器提供（SOYSMyLoot 以 softdepend 引入），编译期
+             仅用于解析注解式 API / 页面托管 / 鉴权门面，不打包进本插件。
+             SOYSMyLoot 以 McerpExpansion 子类形态登记为 ERP 模块：
+             端点自动挂 /api/plugins/<identifier>/* 前缀。
+             ================================================================ -->
+        <!-- MCERP：ERP 中控宿主（McerpExpansion / ErpRegistry / ErpMenus） -->
+        <dependency>
+            <groupId>com.github.cocosoys.mc</groupId>
+            <artifactId>MCERP</artifactId>
+            <version>1.0-SNAPSHOT</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- SOYSHTTPOverMC：注解式 API / 页面托管 / 鉴权 / 数据层运维门面（1.4.1 core） -->
+        <dependency>
+            <groupId>com.github.cocosoys.mc</groupId>
+            <artifactId>soyshttpovermc-core</artifactId>
+            <version>1.4.1</version>
+            <scope>provided</scope>
+        </dependency>
+        <!-- Lombok：编译期注解处理（ERP 模块日志 / VO），不打包 -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <version>1.18.30</version>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- 单元测试（仅测试范围，不进入插件 jar） -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 </project>

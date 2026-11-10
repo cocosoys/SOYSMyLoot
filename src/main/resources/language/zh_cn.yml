@@ -1,0 +1,74 @@
+# ============ SOYSMyLoot 中文语言包 ============
+# 平铺点路径键（加载时经 YamlConfiguration.getKeys(true) 平铺进内存 Map）。
+# 业务代码通过 MessageManager.get(key, args...) 读取，键缺失时回退到代码内兜底文本。
+# 占位符用 {0} {1} ...（按位置替换，String.replace("{i}", 实参)）。
+# 语言文件存放在 插件配置目录/language/ 文件夹下，文件名即语言代码（当前实现中文 zh_cn）。
+# 如需自定义，请编辑 服务器目录/plugins/SOYSMyLoot/language/zh_cn.yml，重启或 /myloot reload messages 生效。
+
+soysmyloot.command.common.no-permission: "§8[§6战利品§8]§r §c你没有权限执行此操作！"
+soysmyloot.command.common.player-only: "§8[§6战利品§8]§r §c该指令只能由玩家执行！"
+soysmyloot.command.common.unknown-command: "§8[§6战利品§8]§r §c未知指令，使用 §e/myloot help §c查看帮助"
+soysmyloot.command.common.no-data: "§8[§6战利品§8]§r §c暂无数据"
+
+soysmyloot.command.reload.success: "§8[§6战利品§8]§r §a配置已重新加载！共加载 §e{0} §a个怪物，§e{1} §a个奖励。"
+soysmyloot.command.reload.single: "§8[§6战利品§8]§r §a已重载 §e{0} §a配置"
+soysmyloot.command.reload.usage: "§8[§6战利品§8]§r §c用法：§e/myloot reload [all|config|monsters|rewards|messages]"
+
+soysmyloot.command.reward.not-found: "§8[§6战利品§8]§r §c找不到ID为 §e{0} §c的奖励！"
+soysmyloot.command.reward.claimed: "§8[§6战利品§8]§r §c你已经领取过该奖励了！"
+soysmyloot.command.reward.cooldown: "§8[§6战利品§8]§r §c该奖励正在冷却中，还需等待 §e{0} §c秒！"
+soysmyloot.command.reward.conditions-not-met: "§8[§6战利品§8]§r §c你还不满足领取条件！"
+soysmyloot.command.reward.claimed-success: "§8[§6战利品§8]§r §a成功领取奖励 §e{0}§a！"
+soysmyloot.command.reward.daily-limit: "§8[§6战利品§8]§r §c该奖励今日领取次数已达上限！"
+soysmyloot.command.reward.weekly-limit: "§8[§6战利品§8]§r §c该奖励本周领取次数已达上限！"
+soysmyloot.command.reward.partial-not-enough: "§8[§6战利品§8]§r §c进度还不足一个领取单位，继续积累伤害/击杀吧！"
+
+soysmyloot.command.list.header: "§8[§6战利品§8]§r §6§m                      §r §e可领取奖励 §6§m                      "
+soysmyloot.command.list.item-available: "§a[✔] §e{0} §7- §f{1}"
+soysmyloot.command.list.item-claimed: "§c[✘] §e{0} §7- §f{1} §8(已领取)"
+soysmyloot.command.list.item-locked: "§7[✘] §e{0} §7- §f{1} §8(未达成)"
+soysmyloot.command.list.empty: "§8[§6战利品§8]§r §c当前没有任何奖励配置。"
+soysmyloot.command.list.footer: "§6§m                                                                      "
+
+soysmyloot.command.progress.header: "§8[§6战利品§8]§r §6§m                      §r §e进度信息 §6§m                      "
+soysmyloot.command.progress.item: "§e{0}§7: 伤害 §a{1} §7| 击杀 §a{2}"
+soysmyloot.command.progress.footer: "§6§m                                                                      "
+
+soysmyloot.command.help.header: "§8[§6战利品§8]§r §6§m                      §r §eSOYSMyLoot 帮助 §6§m                      "
+soysmyloot.command.help.line: "§e/{0} §7- {1}"
+soysmyloot.command.help.footer: "§6§m                                                                      "
+
+soysmyloot.command.info.basic: "§7插件: §eSOYSMyLoot §7| 版本: §e{0} §7| 作者: §eSoys"
+soysmyloot.command.info.database: "§7数据库: §e{0} §7| 已追踪: §e{1} §7怪物 §e{2} §7奖励"
+soysmyloot.command.info.locale: "§7语言: §e{0}"
+
+soysmyloot.command.warn.no-vault: "§8[§6战利品§8]§r §c经济奖励发放失败：未安装 Vault 或经济插件"
+soysmyloot.command.warn.no-playerpoints: "§8[§6战利品§8]§r §c点券奖励发放失败：未安装 PlayerPoints"
+
+soysmyloot.command.leaderboard.header-damage: "§8[§6战利品§8]§r §6§m                      §r §e伤害排行榜 §6§m                      "
+soysmyloot.command.leaderboard.header-kills: "§8[§6战利品§8]§r §6§m                      §r §e击杀排行榜 §6§m                      "
+soysmyloot.command.leaderboard.line: "§e#{0} §f{1} §7- 伤害 §a{2} §7| 击杀 §a{3}"
+soysmyloot.command.leaderboard.empty: "§8[§6战利品§8]§r §c暂无排行榜数据"
+soysmyloot.command.leaderboard.self-damage: "§8[§6战利品§8]§r §7你的伤害排名: §e#{0} §7| 伤害 §a{1} §7| 击杀 §a{2}"
+soysmyloot.command.leaderboard.self-kills: "§8[§6战利品§8]§r §7你的击杀排名: §e#{0} §7| 伤害 §a{1} §7| 击杀 §a{2}"
+soysmyloot.command.leaderboard.unranked: "§8[§6战利品§8]§r §7你暂无上榜记录"
+
+soysmyloot.command.data.export-success: "§8[§6战利品§8]§r §a已导出 §e{0} §a名玩家数据到 §e{1}"
+soysmyloot.command.data.export-fail: "§8[§6战利品§8]§r §c导出失败：{0}"
+soysmyloot.command.data.import-success: "§8[§6战利品§8]§r §a已从 §e{0} §a导入 §e{1} §a名玩家数据"
+soysmyloot.command.data.import-fail: "§8[§6战利品§8]§r §c导入失败：{0}"
+soysmyloot.command.data.migrate-success: "§8[§6战利品§8]§r §a已迁移 §e{0} §a名玩家数据：§e{1} §7→ §e{2}"
+soysmyloot.command.data.migrate-fail: "§8[§6战利品§8]§r §c迁移失败：{0}"
+soysmyloot.command.data.migrate-unknown: "§8[§6战利品§8]§r §c未知存储后端 §e{0} §c，可用：yaml / sqlite / mysql"
+soysmyloot.command.data.reset-progress: "§8[§6战利品§8]§r §a已清空全部进度（保留领取记录）"
+soysmyloot.command.data.reset-full: "§8[§6战利品§8]§r §c已清空全部数据（含领取记录）！"
+soysmyloot.command.data.reset-usage: "§8[§6战利品§8]§r §c用法：§e/myloot reset <keep|full> §7或 §e/myloot reset <玩家> <keep|full>"
+soysmyloot.command.data.reset-player-usage: "§8[§6战利品§8]§r §c用法：§e/myloot reset <玩家> <keep|full>"
+soysmyloot.command.data.reset-player-progress: "§8[§6战利品§8]§r §a已重置玩家 §e{0} §a的进度（保留领取记录）"
+soysmyloot.command.data.reset-player-full: "§8[§6战利品§8]§r §c已重置玩家 §e{0} §c的全部数据（含领取记录）！"
+soysmyloot.command.data.player-not-found: "§8[§6战利品§8]§r §c找不到玩家 §e{0}"
+soysmyloot.command.data.player-not-online: "§8[§6战利品§8]§r §c玩家 §e{0} §c当前不在线，代发奖励需要玩家在线"
+soysmyloot.command.data.give-usage: "§8[§6战利品§8]§r §c用法：§e/myloot give <玩家> <奖励ID>"
+soysmyloot.command.data.give-success: "§8[§6战利品§8]§r §a已向玩家 §e{0} §a代发奖励 §e{1} §a（ID: {2}）"
+soysmyloot.command.data.season-reset-keep: "§8[§6战利品§8]§r §6[赛季] §a新赛季开启，进度已清空（保留领取记录）"
+soysmyloot.command.data.season-reset-full: "§8[§6战利品§8]§r §6[赛季] §c新赛季开启，全部数据已清空"

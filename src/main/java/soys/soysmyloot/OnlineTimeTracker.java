@@ -17,20 +17,23 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 累计在线时长追踪器。
  * <p>由于 Spigot 1.12.2 的 {@code Statistic.PLAY_ONE_MINUTE} 等常量不可用，
- * 这里自行以「分钟」为单位累计每位玩家的在线时长，并写入其个人 {@link PlayerData}
- * （按玩家自身 UUID，而非队伍归属），由存储层随其它数据一起持久化。</p>
+ * 这里自行以「分钟」为单位累计每位玩家的在线时长，并写入 {@link ScopeResolver} 解析出的
+ * 归属（个人 / 队伍）对应的 {@link PlayerData}，与伤害进度、领取记录的归属保持一致，
+ * 由存储层随其它数据一起持久化。</p>
  * <p>计数采用「每分钟结算一次」的滑动窗口，避免重复或遗漏；玩家退出 / 关服时做最终结算。</p>
  */
 public class OnlineTimeTracker implements Listener {
 
     private final SOYSMyLoot plugin;
     private final DataManager dataManager;
+    private final ScopeResolver scopeResolver;
     /** 玩家 UUID -> 上次结算时刻（epoch 毫秒） */
     private final Map<UUID, Long> lastTick = new ConcurrentHashMap<>();
 
-    public OnlineTimeTracker(SOYSMyLoot plugin, DataManager dataManager) {
+    public OnlineTimeTracker(SOYSMyLoot plugin, DataManager dataManager, ScopeResolver scopeResolver) {
         this.plugin = plugin;
         this.dataManager = dataManager;
+        this.scopeResolver = scopeResolver;
     }
 
     /** 插件启用时为已在线的玩家建立结算基准 */
@@ -89,8 +92,9 @@ public class OnlineTimeTracker implements Listener {
     }
 
     private void accumulate(Player player, long minutes) {
-        PlayerData data = dataManager.getData(player.getUniqueId());
+        UUID owner = scopeResolver.resolveOwner(player);
+        PlayerData data = dataManager.getData(owner);
         data.addOnlineMinutes(minutes);
-        dataManager.save(player.getUniqueId());
+        dataManager.save(owner);
     }
 }

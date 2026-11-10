@@ -10,7 +10,11 @@ import soys.soysmyloot.command.LootCommand;
 import soys.soysmyloot.config.ConfigManager;
 import soys.soysmyloot.config.MessageManager;
 import soys.soysmyloot.data.DataManager;
+import soys.soysmyloot.gui.GuiListener;
+import soys.soysmyloot.gui.RewardGui;
 import soys.soysmyloot.hook.LinkTeamHook;
+import soys.soysmyloot.hook.MythicMobsHook;
+import soys.soysmyloot.hook.WorldGuardHook;
 import soys.soysmyloot.leaderboard.LeaderboardManager;
 import soys.soysmyloot.listener.EntityListener;
 import soys.soysmyloot.placeholder.PAPIExpansion;
@@ -36,6 +40,8 @@ public final class SOYSMyLoot extends JavaPlugin {
     private LeaderboardManager leaderboardManager;
     private SeasonManager seasonManager;
     private OnlineTimeTracker onlineTimeTracker;
+    private ProgressHud progressHud;
+    private RewardGui rewardGui;
 
     private Economy economy;
     private PlayerPointsAPI playerPoints;
@@ -55,8 +61,27 @@ public final class SOYSMyLoot extends JavaPlugin {
             getLogger().info("检测到 SOYSLinkTeam，队伍共享伤害模式可用（tracking.scope: team）。");
         }
 
+        // 初始化 MythicMobs 软依赖桥接（无 MythicMobs 时自动降级）
+        MythicMobsHook.init();
+        if (MythicMobsHook.isAvailable()) {
+            getLogger().info("检测到 MythicMobs，可按内部名匹配自定义怪物（monsters.yml 的 mythic 字段）。");
+        }
+
+        // 初始化 WorldGuard 软依赖桥接（无 WorldGuard 时区域限制自动失效）
+        WorldGuardHook.init();
+        if (WorldGuardHook.isAvailable()) {
+            getLogger().info("检测到 WorldGuard，区域追踪限制可用（tracking.regions）。");
+        }
+
         configManager = new ConfigManager(this);
         configManager.loadAll();
+
+        // 配置了区域限制但未安装 WorldGuard 时给出明确提示（限制不生效）
+        if (!WorldGuardHook.isAvailable()
+                && !"all".equals(configManager.getRegionMode())
+                && !configManager.getRegionList().isEmpty()) {
+            getLogger().warning("tracking.regions 配置了区域限制但未安装 WorldGuard，该限制不生效。");
+        }
 
         storageManager = new StorageManager(this);
         try {
@@ -67,28 +92,43 @@ public final class SOYSMyLoot extends JavaPlugin {
             return;
         }
 
-        messageManager = new MessageManager(this);
+        messageManager = new MessageManager(this, configManager);
         dataManager = new DataManager(this, storageManager);
 
         scopeResolver = new ScopeResolver(configManager);
         rewardManager = new RewardManager(this, messageManager, dataManager, scopeResolver);
         leaderboardManager = new LeaderboardManager(this, storageManager, configManager);
         seasonManager = new SeasonManager(this, storageManager, dataManager, configManager, messageManager);
-        onlineTimeTracker = new OnlineTimeTracker(this, dataManager);
+        onlineTimeTracker = new OnlineTimeTracker(this, dataManager, scopeResolver);
         onlineTimeTracker.init();
+        progressHud = new ProgressHud(this, configManager, dataManager, scopeResolver);
+        progressHud.init();
+        rewardGui = new RewardGui(this, configManager, messageManager, dataManager, rewardManager, scopeResolver);
 
         setupEconomy();
         setupPlayerPoints();
 
-        getServer().getPluginManager().registerEvents(
-                new EntityListener(this, configManager, dataManager, scopeResolver), this);
+        EntityListener entityListener = new EntityListener(this, configManager, dataManager, scopeResolver);
+        getServer().getPluginManager().registerEvents(entityListener, this);
         getServer().getPluginManager().registerEvents(onlineTimeTracker, this);
+        getServer().getPluginManager().registerEvents(new GuiListener(rewardGui), this);
+
+        // 已在线玩家（如插件热重载）异步预加载，避免首次伤害事件同步读库
+        Bukkit.getOnlinePlayers().forEach(p -> dataManager.preload(p.getUniqueId()));
+        // 周期性清理防作弊限流窗口，兜底队伍模式下的 key 残留
+        Bukkit.getScheduler().runTaskTimer(this, entityListener::cleanupRateWindows, 1200L, 1200L);
 
         LootCommand cmd = new LootCommand(this, configManager, messageManager, dataManager, rewardManager,
-                storageManager, scopeResolver, leaderboardManager, seasonManager);
+                storageManager, scopeResolver, leaderboardManager, seasonManager, rewardGui);
         if (getCommand("myloot") != null) {
             getCommand("myloot").setExecutor(cmd);
             getCommand("myloot").setTabCompleter(cmd);
+        }
+
+        // 月卡访问链接指令（依赖 ERP 模块颁发的 token，ERP 未启用时指令内部会提示）
+        if (getCommand("monthly") != null) {
+            getCommand("monthly").setExecutor(new soys.soysmyloot.command.MonthlyCommand(
+                    this, configManager, messageManager));
         }
 
         if (new PAPIExpansion(this, configManager, dataManager, rewardManager, scopeResolver, leaderboardManager).register()) {
@@ -112,6 +152,36 @@ public final class SOYSMyLoot extends JavaPlugin {
 
         getLogger().info("SOYSMyLoot 已启用：加载 " + configManager.getMonsters().size()
                 + " 个怪物，" + configManager.getRewards().size() + " 个奖励。");
+
+        // 网关层扩展（独立于 MCERP）：dist 页面托管 + 玩家侧 token 端点
+        if (Bukkit.getPluginManager().getPlugin("SOYSHTTPOverMC") != null) {
+            try {
+                soys.soysmyloot.spring.SOYSMyLootExpansion web = new soys.soysmyloot.spring.SOYSMyLootExpansion();
+                if (!web.register()) {
+                    getLogger().warning("SOYSMyLoot Web 扩展注册失败（identifier 冲突？）");
+                } else {
+                    getLogger().info("SOYSMyLoot Web 扩展已挂载（页面 /web/plugins/SOYSMyLoot"
+                            + " + 玩家端点 /api/plugins/SOYSMyLoot/player/*）。");
+                }
+            } catch (Throwable t) {
+                getLogger().log(Level.WARNING, "SOYSMyLoot Web 扩展挂载异常", t);
+            }
+
+            // ERP 模块（仅菜单 + /erp/* 管理端点）；MCERP 未安装时不注册，页面与玩家端点不受影响
+            if (Bukkit.getPluginManager().getPlugin("MCERP") != null) {
+                try {
+                    soys.soysmyloot.spring.erp.SOYSMyLootErpExpansion erp =
+                            new soys.soysmyloot.spring.erp.SOYSMyLootErpExpansion();
+                    if (!erp.register()) {
+                        getLogger().warning("SOYSMyLoot ERP 模块注册失败（identifier 冲突？）");
+                    } else {
+                        getLogger().info("SOYSMyLoot ERP 模块已挂载到 MCERP 中控后台（标识 SOYSMyLoot-ERP）。");
+                    }
+                } catch (Throwable t) {
+                    getLogger().log(Level.WARNING, "SOYSMyLoot ERP 模块挂载异常（可忽略）", t);
+                }
+            }
+        }
     }
 
     @Override
@@ -121,6 +191,9 @@ public final class SOYSMyLoot extends JavaPlugin {
         }
         if (seasonManager != null) {
             seasonManager.stop();
+        }
+        if (progressHud != null) {
+            progressHud.stop();
         }
         if (onlineTimeTracker != null) {
             onlineTimeTracker.flushAll();
@@ -191,5 +264,17 @@ public final class SOYSMyLoot extends JavaPlugin {
 
     public SeasonManager getSeasonManager() {
         return seasonManager;
+    }
+
+    public ProgressHud getProgressHud() {
+        return progressHud;
+    }
+
+    public RewardGui getRewardGui() {
+        return rewardGui;
+    }
+
+    public DataManager getDataManager() {
+        return dataManager;
     }
 }

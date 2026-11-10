@@ -13,7 +13,9 @@ import soys.soysmyloot.config.ConfigManager;
 import soys.soysmyloot.config.MessageManager;
 import soys.soysmyloot.data.DataManager;
 import soys.soysmyloot.data.PlayerData;
+import soys.soysmyloot.gui.RewardGui;
 import soys.soysmyloot.hook.LinkTeamHook;
+import soys.soysmyloot.hook.MythicMobsHook;
 import soys.soysmyloot.leaderboard.LeaderboardManager;
 import soys.soysmyloot.model.MonsterEntry;
 import soys.soysmyloot.model.RewardEntry;
@@ -26,9 +28,7 @@ import soys.soysmyloot.util.Text;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -47,10 +47,12 @@ public class LootCommand implements CommandExecutor, TabCompleter {
     private final ScopeResolver scopeResolver;
     private final LeaderboardManager leaderboardManager;
     private final SeasonManager seasonManager;
+    private final RewardGui rewardGui;
 
     public LootCommand(SOYSMyLoot plugin, ConfigManager config, MessageManager messageManager,
                        DataManager dataManager, RewardManager rewardManager, StorageManager storageManager,
-                       ScopeResolver scopeResolver, LeaderboardManager leaderboardManager, SeasonManager seasonManager) {
+                       ScopeResolver scopeResolver, LeaderboardManager leaderboardManager, SeasonManager seasonManager,
+                       RewardGui rewardGui) {
         this.plugin = plugin;
         this.config = config;
         this.messageManager = messageManager;
@@ -60,6 +62,7 @@ public class LootCommand implements CommandExecutor, TabCompleter {
         this.scopeResolver = scopeResolver;
         this.leaderboardManager = leaderboardManager;
         this.seasonManager = seasonManager;
+        this.rewardGui = rewardGui;
     }
 
     @Override
@@ -74,40 +77,40 @@ public class LootCommand implements CommandExecutor, TabCompleter {
                 break;
             case "reload":
                 if (!sender.hasPermission("soysmyloot.admin")) {
-                    messageManager.send(sender, "no-permission");
+                    messageManager.send(sender, "soysmyloot.command.common.no-permission");
                     return true;
                 }
                 doReload(sender, args);
                 break;
             case "list":
                 if (!sender.hasPermission("soysmyloot.use")) {
-                    messageManager.send(sender, "no-permission");
+                    messageManager.send(sender, "soysmyloot.command.common.no-permission");
                     return true;
                 }
                 sendList(sender);
                 break;
             case "claim":
                 if (!sender.hasPermission("soysmyloot.use")) {
-                    messageManager.send(sender, "no-permission");
+                    messageManager.send(sender, "soysmyloot.command.common.no-permission");
                     return true;
                 }
                 if (!(sender instanceof Player)) {
-                    messageManager.send(sender, "player-only");
+                    messageManager.send(sender, "soysmyloot.command.common.player-only");
                     return true;
                 }
                 if (args.length < 2) {
-                    messageManager.send(sender, "unknown-command");
+                    messageManager.send(sender, "soysmyloot.command.common.unknown-command");
                     return true;
                 }
                 claimReward((Player) sender, args[1]);
                 break;
             case "progress":
                 if (!sender.hasPermission("soysmyloot.use")) {
-                    messageManager.send(sender, "no-permission");
+                    messageManager.send(sender, "soysmyloot.command.common.no-permission");
                     return true;
                 }
                 if (!(sender instanceof Player)) {
-                    messageManager.send(sender, "player-only");
+                    messageManager.send(sender, "soysmyloot.command.common.player-only");
                     return true;
                 }
                 sendProgress((Player) sender, args.length >= 2 ? args[1] : null);
@@ -115,67 +118,79 @@ public class LootCommand implements CommandExecutor, TabCompleter {
             case "info":
                 sendInfo(sender);
                 break;
+            case "gui":
+                if (!sender.hasPermission("soysmyloot.use")) {
+                    messageManager.send(sender, "soysmyloot.command.common.no-permission");
+                    return true;
+                }
+                if (!(sender instanceof Player)) {
+                    messageManager.send(sender, "soysmyloot.command.common.player-only");
+                    return true;
+                }
+                rewardGui.open((Player) sender, 0);
+                break;
             case "top":
                 if (!sender.hasPermission("soysmyloot.use")) {
-                    messageManager.send(sender, "no-permission");
+                    messageManager.send(sender, "soysmyloot.command.common.no-permission");
                     return true;
                 }
                 sendTop(sender, args.length >= 2 ? args[1] : null);
                 break;
             case "export":
                 if (!sender.hasPermission("soysmyloot.admin")) {
-                    messageManager.send(sender, "no-permission");
+                    messageManager.send(sender, "soysmyloot.command.common.no-permission");
                     return true;
                 }
                 doExport(sender, args.length >= 2 ? args[1] : null);
                 break;
             case "import":
                 if (!sender.hasPermission("soysmyloot.admin")) {
-                    messageManager.send(sender, "no-permission");
+                    messageManager.send(sender, "soysmyloot.command.common.no-permission");
                     return true;
                 }
                 if (args.length < 2) {
-                    messageManager.send(sender, "unknown-command");
+                    messageManager.send(sender, "soysmyloot.command.common.unknown-command");
                     return true;
                 }
                 doImport(sender, args[1]);
                 break;
             case "migrate":
                 if (!sender.hasPermission("soysmyloot.admin")) {
-                    messageManager.send(sender, "no-permission");
+                    messageManager.send(sender, "soysmyloot.command.common.no-permission");
                     return true;
                 }
                 if (args.length < 3) {
-                    messageManager.send(sender, "unknown-command");
+                    messageManager.send(sender, "soysmyloot.command.common.unknown-command");
                     return true;
                 }
                 doMigrate(sender, args[1], args[2]);
                 break;
             case "reset":
                 if (!sender.hasPermission("soysmyloot.admin")) {
-                    messageManager.send(sender, "no-permission");
+                    messageManager.send(sender, "soysmyloot.command.common.no-permission");
                     return true;
                 }
                 doReset(sender, args);
                 break;
             case "give":
                 if (!sender.hasPermission("soysmyloot.admin")) {
-                    messageManager.send(sender, "no-permission");
+                    messageManager.send(sender, "soysmyloot.command.common.no-permission");
                     return true;
                 }
                 doGive(sender, args);
                 break;
             default:
-                messageManager.send(sender, "unknown-command");
+                messageManager.send(sender, "soysmyloot.command.common.unknown-command");
         }
         return true;
     }
 
     private void sendHelp(CommandSender sender) {
-        messageManager.send(sender, "help-header");
+        messageManager.send(sender, "soysmyloot.command.help.header");
         String[][] lines = {
                 {"myloot", "显示本帮助"},
                 {"myloot list", "列出全部奖励及状态"},
+                {"myloot gui", "打开奖励领取界面（GUI）"},
                 {"myloot claim <id>", "领取指定奖励"},
                 {"myloot progress [怪物]", "查看当前进度"},
                 {"myloot top [damage|kills]", "查看排行榜"},
@@ -189,39 +204,33 @@ public class LootCommand implements CommandExecutor, TabCompleter {
                 {"myloot reload [config|monsters|rewards|messages]", "重载配置（默认全部，可指定单文件）（管理员）"}
         };
         for (String[] line : lines) {
-            Map<String, String> ph = new HashMap<>();
-            ph.put("command", line[0]);
-            ph.put("description", line[1]);
-            messageManager.send(sender, "help-line", ph);
+            messageManager.send(sender, "soysmyloot.command.help.line", line[0], line[1]);
         }
-        messageManager.send(sender, "help-footer");
+        messageManager.send(sender, "soysmyloot.command.help.footer");
     }
 
     private void sendList(CommandSender sender) {
         if (config.getRewards().isEmpty()) {
-            messageManager.send(sender, "list-empty");
+            messageManager.send(sender, "soysmyloot.command.list.empty");
             return;
         }
-        messageManager.send(sender, "list-header");
+        messageManager.send(sender, "soysmyloot.command.list.header");
         for (RewardEntry reward : sortedRewards()) {
             String coloredName = Text.color(reward.getName());
-            Map<String, String> ph = new HashMap<>();
-            ph.put("id", reward.getId());
-            ph.put("name", coloredName);
             if (sender instanceof Player) {
                 Player p = (Player) sender;
                 if (rewardManager.canClaim(p, reward)) {
-                    messageManager.send(sender, "list-item-available", ph);
+                    messageManager.send(sender, "soysmyloot.command.list.item-available", reward.getId(), coloredName);
                 } else if (rewardManager.isClaimed(p, reward)) {
-                    messageManager.send(sender, "list-item-claimed", ph);
+                    messageManager.send(sender, "soysmyloot.command.list.item-claimed", reward.getId(), coloredName);
                 } else {
-                    messageManager.send(sender, "list-item-locked", ph);
+                    messageManager.send(sender, "soysmyloot.command.list.item-locked", reward.getId(), coloredName);
                 }
             } else {
                 sender.sendMessage(Text.color("&e" + reward.getId() + " &7- " + coloredName));
             }
         }
-        messageManager.send(sender, "list-footer");
+        messageManager.send(sender, "soysmyloot.command.list.footer");
     }
 
     /** 奖励按多阶段分组（铜/银/金优先）再按 ID 排序，便于阶梯式展示 */
@@ -258,42 +267,36 @@ public class LootCommand implements CommandExecutor, TabCompleter {
     private void claimReward(Player player, String id) {
         RewardEntry reward = config.getReward(id);
         if (reward == null) {
-            Map<String, String> ph = new HashMap<>();
-            ph.put("id", id);
-            messageManager.send(player, "reward-not-found", ph);
+            messageManager.send(player, "soysmyloot.command.reward.not-found", id);
             return;
         }
         if (!reward.isPartial() && rewardManager.isClaimed(player, reward)) {
-            messageManager.send(player, "reward-claimed");
+            messageManager.send(player, "soysmyloot.command.reward.claimed");
             return;
         }
         long cd = rewardManager.getCooldownRemaining(player, reward);
         if (cd > 0) {
-            Map<String, String> ph = new HashMap<>();
-            ph.put("time", String.valueOf(cd));
-            messageManager.send(player, "reward-cooldown", ph);
+            messageManager.send(player, "soysmyloot.command.reward.cooldown", cd);
             return;
         }
         if (reward.getDailyLimit() > 0 && rewardManager.getDailyClaimed(player, reward) >= reward.getDailyLimit()) {
-            messageManager.send(player, "reward-daily-limit");
+            messageManager.send(player, "soysmyloot.command.reward.daily-limit");
             return;
         }
         if (reward.getWeeklyLimit() > 0 && rewardManager.getWeeklyClaimed(player, reward) >= reward.getWeeklyLimit()) {
-            messageManager.send(player, "reward-weekly-limit");
+            messageManager.send(player, "soysmyloot.command.reward.weekly-limit");
             return;
         }
         if (!rewardManager.canClaim(player, reward)) {
             if (reward.isPartial() && rewardManager.bankedUnits(player, reward) < 1) {
-                messageManager.send(player, "reward-partial-not-enough");
+                messageManager.send(player, "soysmyloot.command.reward.partial-not-enough");
             } else {
-                messageManager.send(player, "reward-conditions-not-met");
+                messageManager.send(player, "soysmyloot.command.reward.conditions-not-met");
             }
             return;
         }
         if (rewardManager.claim(player, reward)) {
-            Map<String, String> ph = new HashMap<>();
-            ph.put("name", Text.color(reward.getName()));
-            messageManager.send(player, "reward-claimed-success", ph);
+            messageManager.send(player, "soysmyloot.command.reward.claimed-success", Text.color(reward.getName()));
         }
     }
 
@@ -301,49 +304,48 @@ public class LootCommand implements CommandExecutor, TabCompleter {
         UUID owner = scopeResolver.resolveOwner(player);
         String world = scopeResolver.resolveWorld(player.getWorld().getName());
         PlayerData data = dataManager.getData(owner);
-        messageManager.send(player, "progress-header");
+        messageManager.send(player, "soysmyloot.command.progress.header");
         if (monsterId != null) {
             MonsterEntry m = config.getMonster(monsterId);
             if (m == null) {
-                messageManager.send(player, "no-data");
+                messageManager.send(player, "soysmyloot.command.common.no-data");
                 return;
             }
-            messageManager.send(player, "progress-item", progressPlaceholders(m, data, world));
+            messageManager.send(player, "soysmyloot.command.progress.item",
+                    m.getDisplayName(),
+                    fmt(data.getDamage(world, m.getId())),
+                    data.getKills(world, m.getId()));
         } else {
             if (config.getMonsters().isEmpty()) {
-                messageManager.send(player, "no-data");
+                messageManager.send(player, "soysmyloot.command.common.no-data");
                 return;
             }
             for (MonsterEntry m : config.getMonsters().values()) {
-                messageManager.send(player, "progress-item", progressPlaceholders(m, data, world));
+                messageManager.send(player, "soysmyloot.command.progress.item",
+                        m.getDisplayName(),
+                        fmt(data.getDamage(world, m.getId())),
+                        data.getKills(world, m.getId()));
             }
         }
-        messageManager.send(player, "progress-footer");
-    }
-
-    private Map<String, String> progressPlaceholders(MonsterEntry m, PlayerData data, String world) {
-        Map<String, String> ph = new HashMap<>();
-        ph.put("monster", m.getDisplayName());
-        ph.put("damage", fmt(data.getDamage(world, m.getId())));
-        ph.put("kills", String.valueOf(data.getKills(world, m.getId())));
-        return ph;
+        messageManager.send(player, "soysmyloot.command.progress.footer");
     }
 
     private void sendInfo(CommandSender sender) {
-        Map<String, String> ph = new HashMap<>();
-        ph.put("version", plugin.getDescription().getVersion());
-        messageManager.send(sender, "info", ph);
+        messageManager.send(sender, "soysmyloot.command.info.basic",
+                plugin.getDescription().getVersion());
 
-        Map<String, String> ph2 = new HashMap<>();
-        ph2.put("db", config.getPrimaryBackendId());
-        ph2.put("monsters", String.valueOf(config.getMonsters().size()));
-        ph2.put("rewards", String.valueOf(config.getRewards().size()));
-        messageManager.send(sender, "info-database", ph2);
+        messageManager.send(sender, "soysmyloot.command.info.database",
+                config.getPrimaryBackendId(),
+                config.getMonsters().size(),
+                config.getRewards().size());
 
         // 进度归属 / 世界隔离 / 赛季信息
         sender.sendMessage(Text.color("&7进度归属: &e" + config.getScopeId()
                 + " &7| 世界隔离: &e" + config.isWorldIsolation()
                 + " &7| 排行榜: &e" + config.getLeaderboardLimit() + " 名"));
+        messageManager.send(sender, "soysmyloot.command.info.locale", messageManager.getLocale());
+        sender.sendMessage(Text.color("&7MythicMobs: "
+                + (MythicMobsHook.isAvailable() ? "&a可用（可按内部名匹配自定义怪物）" : "&c未安装")));
         if (config.isSeasonAutoReset()) {
             long next = seasonManager.getNextResetEpoch();
             sender.sendMessage(Text.color("&7赛季自动重置: &a开启 &7| 周期 &e" + config.getSeasonPeriodHours()
@@ -364,26 +366,26 @@ public class LootCommand implements CommandExecutor, TabCompleter {
         } else {
             byDamage = config.isLeaderboardByDamage();
             if (modeArg != null && !"damage".equalsIgnoreCase(modeArg)) {
-                // 非法参数，提示可用项
                 sender.sendMessage(Text.color("&7用法：&e/myloot top [damage|kills]"));
             }
         }
 
         List<LeaderboardRow> rows = byDamage ? leaderboardManager.getRowsByDamage() : leaderboardManager.getRowsByKills();
-        messageManager.send(sender, byDamage ? "leaderboard-header-damage" : "leaderboard-header-kills");
+        messageManager.send(sender, byDamage
+                ? "soysmyloot.command.leaderboard.header-damage"
+                : "soysmyloot.command.leaderboard.header-kills");
         if (rows.isEmpty()) {
-            messageManager.send(sender, "leaderboard-empty");
+            messageManager.send(sender, "soysmyloot.command.leaderboard.empty");
             return;
         }
 
-        Map<UUID, String> teamNames = LinkTeamHook.getTeamNameIndex();
+        java.util.Map<UUID, String> teamNames = LinkTeamHook.getTeamNameIndex();
         for (LeaderboardRow row : rows) {
-            Map<String, String> ph = new HashMap<>();
-            ph.put("rank", String.valueOf(row.getRank()));
-            ph.put("owner", resolveOwnerName(row.getOwner(), teamNames));
-            ph.put("damage", fmt(row.getTotalDamage()));
-            ph.put("kills", String.valueOf(row.getTotalKills()));
-            messageManager.send(sender, "leaderboard-line", ph);
+            messageManager.send(sender, "soysmyloot.command.leaderboard.line",
+                    row.getRank(),
+                    resolveOwnerName(row.getOwner(), teamNames),
+                    fmt(row.getTotalDamage()),
+                    row.getTotalKills());
         }
 
         // 命令执行者自身的名次（仅玩家）
@@ -393,18 +395,19 @@ public class LootCommand implements CommandExecutor, TabCompleter {
             int rank = leaderboardManager.getRank(owner, byDamage);
             PlayerData data = dataManager.getData(owner);
             if (rank > 0) {
-                Map<String, String> ph = new HashMap<>();
-                ph.put("rank", String.valueOf(rank));
-                ph.put("damage", fmt(data.getTotalDamage()));
-                ph.put("kills", String.valueOf(data.getTotalKills()));
-                messageManager.send(sender, byDamage ? "leaderboard-self-damage" : "leaderboard-self-kills", ph);
+                messageManager.send(sender, byDamage
+                        ? "soysmyloot.command.leaderboard.self-damage"
+                        : "soysmyloot.command.leaderboard.self-kills",
+                        rank,
+                        fmt(data.getTotalDamage()),
+                        data.getTotalKills());
             } else {
-                messageManager.send(sender, "leaderboard-unranked");
+                messageManager.send(sender, "soysmyloot.command.leaderboard.unranked");
             }
         }
     }
 
-    private String resolveOwnerName(UUID owner, Map<UUID, String> teamNames) {
+    private String resolveOwnerName(UUID owner, java.util.Map<UUID, String> teamNames) {
         String teamName = teamNames.get(owner);
         if (teamName != null && !teamName.isEmpty()) {
             return "&d[" + teamName + "&d]";
@@ -421,7 +424,7 @@ public class LootCommand implements CommandExecutor, TabCompleter {
     private void doExport(CommandSender sender, String fileName) {
         File dir = new File(plugin.getDataFolder(), "exports");
         if (!dir.exists() && !dir.mkdirs()) {
-            messageManager.send(sender, "export-fail", ph("reason", "无法创建导出目录"));
+            messageManager.send(sender, "soysmyloot.command.data.export-fail", "无法创建导出目录");
             return;
         }
         if (fileName == null || fileName.isEmpty()) {
@@ -435,10 +438,9 @@ public class LootCommand implements CommandExecutor, TabCompleter {
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 int count = storageManager.exportAll(file);
-                messageManager.send(sender, "export-success",
-                        ph2("count", String.valueOf(count), "file", file.getName()));
+                messageManager.send(sender, "soysmyloot.command.data.export-success", count, file.getName());
             } catch (Exception e) {
-                messageManager.send(sender, "export-fail", ph("reason", e.getMessage()));
+                messageManager.send(sender, "soysmyloot.command.data.export-fail", e.getMessage());
             }
         });
     }
@@ -460,11 +462,10 @@ public class LootCommand implements CommandExecutor, TabCompleter {
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 int count = storageManager.importAll(targetFile);
-                messageManager.send(sender, "import-success",
-                        ph2("count", String.valueOf(count), "file", targetFile.getName()));
+                messageManager.send(sender, "soysmyloot.command.data.import-success", targetFile.getName(), count);
                 leaderboardManager.refresh();
             } catch (Exception e) {
-                messageManager.send(sender, "import-fail", ph("reason", e.getMessage()));
+                messageManager.send(sender, "soysmyloot.command.data.import-fail", e.getMessage());
             }
         });
     }
@@ -473,33 +474,25 @@ public class LootCommand implements CommandExecutor, TabCompleter {
         StorageType from = StorageType.fromId(fromArg);
         StorageType to = StorageType.fromId(toArg);
         if (from == null || to == null) {
-            messageManager.send(sender, "migrate-unknown", ph("from", fromArg));
+            messageManager.send(sender, "soysmyloot.command.data.migrate-unknown", fromArg);
             return;
         }
         if (from == to) {
-            messageManager.send(sender, "migrate-fail", ph("reason", "来源与目标不能相同"));
+            messageManager.send(sender, "soysmyloot.command.data.migrate-fail", "来源与目标不能相同");
             return;
         }
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
                 int count = storageManager.migrate(from, to, true);
-                messageManager.send(sender, "migrate-success",
-                        ph3("count", String.valueOf(count), "from", from.getId(), "to", to.getId()));
+                messageManager.send(sender, "soysmyloot.command.data.migrate-success",
+                        count, from.getId(), to.getId());
                 leaderboardManager.refresh();
             } catch (Exception e) {
-                messageManager.send(sender, "migrate-fail", ph("reason", e.getMessage()));
+                messageManager.send(sender, "soysmyloot.command.data.migrate-fail", e.getMessage());
             }
         });
     }
 
-    /**
-     * 重置进度。
-     * 用法：
-     *   /myloot reset <keep|full>              —— 重置全服玩家进度
-     *   /myloot reset <玩家名> <keep|full>     —— 重置指定玩家进度
-     *
-     * @param args 完整指令参数（args[0] = "reset"）
-     */
     /**
      * 重载配置。
      * 用法：
@@ -508,7 +501,7 @@ public class LootCommand implements CommandExecutor, TabCompleter {
      *   /myloot reload config       —— 仅重载 config.yml（设置）
      *   /myloot reload monsters     —— 仅重载 monsters.yml
      *   /myloot reload rewards      —— 仅重载 rewards.yml
-     *   /myloot reload messages     —— 仅重载 messages.yml
+     *   /myloot reload messages     —— 仅重载 language/ 语言文件
      */
     private void doReload(CommandSender sender, String[] args) {
         String target = args.length >= 2 ? args[1].toLowerCase() : "all";
@@ -518,33 +511,33 @@ public class LootCommand implements CommandExecutor, TabCompleter {
                 config.loadAll();
                 scopeResolver.reload();
                 leaderboardManager.reload();
+                messageManager.reload();
                 refreshLeaderboardAsync();
-                Map<String, String> phAll = new HashMap<>();
-                phAll.put("monsters", String.valueOf(config.getMonsters().size()));
-                phAll.put("rewards", String.valueOf(config.getRewards().size()));
-                messageManager.send(sender, "config-reloaded", phAll);
+                messageManager.send(sender, "soysmyloot.command.reload.success",
+                        config.getMonsters().size(), config.getRewards().size());
                 break;
             case "config":
                 config.loadSettings();
                 scopeResolver.reload();
                 leaderboardManager.reload();
+                messageManager.reload();
                 refreshLeaderboardAsync();
-                messageManager.send(sender, "reload-single", ph("file", "config.yml"));
+                messageManager.send(sender, "soysmyloot.command.reload.single", "config.yml");
                 break;
             case "monsters":
                 config.loadMonsters();
-                messageManager.send(sender, "reload-single", ph("file", "monsters.yml"));
+                messageManager.send(sender, "soysmyloot.command.reload.single", "monsters.yml");
                 break;
             case "rewards":
                 config.loadRewards();
-                messageManager.send(sender, "reload-single", ph("file", "rewards.yml"));
+                messageManager.send(sender, "soysmyloot.command.reload.single", "rewards.yml");
                 break;
             case "messages":
-                config.loadMessages();
-                messageManager.send(sender, "reload-single", ph("file", "messages.yml"));
+                messageManager.reload();
+                messageManager.send(sender, "soysmyloot.command.reload.single", "language/");
                 break;
             default:
-                messageManager.send(sender, "reload-usage");
+                messageManager.send(sender, "soysmyloot.command.reload.usage");
                 break;
         }
     }
@@ -558,7 +551,7 @@ public class LootCommand implements CommandExecutor, TabCompleter {
 
     private void doReset(CommandSender sender, String[] args) {
         if (args.length < 2) {
-            messageManager.send(sender, "reset-usage");
+            messageManager.send(sender, "soysmyloot.command.data.reset-usage");
             return;
         }
 
@@ -569,7 +562,7 @@ public class LootCommand implements CommandExecutor, TabCompleter {
         if (isPlayerMode) {
             // 重置指定玩家：/myloot reset <玩家> <keep|full>
             if (args.length < 3) {
-                messageManager.send(sender, "reset-player-usage");
+                messageManager.send(sender, "soysmyloot.command.data.reset-player-usage");
                 return;
             }
             String modeArg = args[2];
@@ -580,18 +573,21 @@ public class LootCommand implements CommandExecutor, TabCompleter {
             boolean keep = keepClaims == 1;
             OfflinePlayer target = Bukkit.getOfflinePlayer(firstArg);
             if (target == null) {
-                messageManager.send(sender, "player-not-found", ph("player", firstArg));
+                messageManager.send(sender, "soysmyloot.command.data.player-not-found", firstArg);
                 return;
             }
             dataManager.resetPlayer(target.getUniqueId(), !keep);
-            Map<String, String> ph = new HashMap<>();
-            ph.put("player", target.getName() != null ? target.getName() : firstArg);
-            messageManager.send(sender, keep ? "reset-player-progress" : "reset-player-full", ph);
+            String playerName = target.getName() != null ? target.getName() : firstArg;
+            messageManager.send(sender, keep
+                    ? "soysmyloot.command.data.reset-player-progress"
+                    : "soysmyloot.command.data.reset-player-full", playerName);
         } else {
             // 重置全服：/myloot reset <keep|full>
             boolean keepClaims = parseResetMode(sender, firstArg) == 1;
             seasonManager.resetProgress(keepClaims, true);
-            messageManager.send(sender, keepClaims ? "reset-progress" : "reset-full");
+            messageManager.send(sender, keepClaims
+                    ? "soysmyloot.command.data.reset-progress"
+                    : "soysmyloot.command.data.reset-full");
         }
     }
 
@@ -605,7 +601,7 @@ public class LootCommand implements CommandExecutor, TabCompleter {
         if ("full".equalsIgnoreCase(modeArg)) {
             return 0;
         }
-        messageManager.send(sender, "reset-usage");
+        messageManager.send(sender, "soysmyloot.command.data.reset-usage");
         return -1;
     }
 
@@ -615,7 +611,7 @@ public class LootCommand implements CommandExecutor, TabCompleter {
      */
     private void doGive(CommandSender sender, String[] args) {
         if (args.length < 3) {
-            messageManager.send(sender, "give-usage");
+            messageManager.send(sender, "soysmyloot.command.data.give-usage");
             return;
         }
         String playerName = args[1];
@@ -623,52 +619,26 @@ public class LootCommand implements CommandExecutor, TabCompleter {
 
         Player target = Bukkit.getPlayerExact(playerName);
         if (target == null) {
-            messageManager.send(sender, "player-not-online", ph("player", playerName));
+            messageManager.send(sender, "soysmyloot.command.data.player-not-online", playerName);
             return;
         }
         RewardEntry reward = config.getReward(rewardId);
         if (reward == null) {
-            Map<String, String> ph = new HashMap<>();
-            ph.put("id", rewardId);
-            messageManager.send(sender, "reward-not-found", ph);
+            messageManager.send(sender, "soysmyloot.command.reward.not-found", rewardId);
             return;
         }
 
         rewardManager.adminGive(target, reward);
 
-        Map<String, String> ph = new HashMap<>();
-        ph.put("player", target.getName());
-        ph.put("name", Text.color(reward.getName()));
-        ph.put("id", rewardId);
-        messageManager.send(sender, "give-success", ph);
-    }
-
-    private Map<String, String> ph(String k1, String v1) {
-        Map<String, String> m = new HashMap<>();
-        m.put(k1, v1);
-        return m;
-    }
-
-    private Map<String, String> ph2(String k1, String v1, String k2, String v2) {
-        Map<String, String> m = new HashMap<>();
-        m.put(k1, v1);
-        m.put(k2, v2);
-        return m;
-    }
-
-    private Map<String, String> ph3(String k1, String v1, String k2, String v2, String k3, String v3) {
-        Map<String, String> m = new HashMap<>();
-        m.put(k1, v1);
-        m.put(k2, v2);
-        m.put(k3, v3);
-        return m;
+        messageManager.send(sender, "soysmyloot.command.data.give-success",
+                target.getName(), Text.color(reward.getName()), rewardId);
     }
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         List<String> result = new ArrayList<>();
         if (args.length == 1) {
-            String[] subs = {"help", "reload", "list", "claim", "progress", "info", "top", "export", "import", "migrate", "reset", "give"};
+            String[] subs = {"help", "reload", "list", "gui", "claim", "progress", "info", "top", "export", "import", "migrate", "reset", "give"};
             for (String s : subs) {
                 if (s.startsWith(args[0].toLowerCase())) {
                     result.add(s);

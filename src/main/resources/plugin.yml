@@ -7,17 +7,26 @@ description: 根据玩家对配置怪物造成的伤害/击杀发放奖励的战
 
 # 强制依赖：PlaceholderAPI 必须存在插件才能启用
 depend: [PlaceholderAPI]
-# 软依赖：可选功能（经济/点券/队伍共享），缺失时对应功能自动跳过并提示
+# 软依赖：可选功能（经济/点券/队伍共享/自定义怪物/区域限制/Web 后台），缺失时对应功能自动跳过并提示
 #   Vault / PlayerPoints -> 金钱/点券奖励
 #   SOYSLinkTeam        -> 队伍/公会共享伤害（tracking.scope: team）
-softdepend: [Vault, PlayerPoints, SOYSLinkTeam]
+#   MythicMobs          -> 按内部名匹配自定义怪物（monsters.yml 的 mythic 字段）
+#   WorldGuard          -> 区域追踪限制（tracking.regions）
+#   SOYSHTTPOverMC      -> HTTP-over-MC 网关（注解式 API / 鉴权 / 数据层运维）
+#   MCERP               -> ERP 中控宿主（SOYSMyLoot 以其 McerpExpansion 模块形态接入 Web 后台）
+softdepend: [Vault, PlayerPoints, SOYSLinkTeam, MythicMobs, WorldGuard, SOYSHTTPOverMC, MCERP]
 
 commands:
   myloot:
     description: SOYSMyLoot 主指令
     aliases: [ml, loot]
     permission: soysmyloot.use
-    usage: /myloot <help|reload|list|claim|progress|info|top|export|import|migrate|reset|give>
+    usage: /myloot <help|reload|list|gui|claim|progress|info|top|export|import|migrate|reset|give>
+  monthly:
+    description: 生成个人月卡页面访问链接
+    aliases: [mlm]
+    permission: soysmyloot.use
+    usage: /monthly
 
 permissions:
   soysmyloot.use:

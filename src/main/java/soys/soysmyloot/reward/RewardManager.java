@@ -78,8 +78,8 @@ public class RewardManager {
                 }
                 return plugin.getEconomy().getBalance(player) >= c.getAmount();
             case ONLINE:
-                // 累计在线时长（分钟），由 OnlineTimeTracker 自行统计并持久化，与版本无关
-                return dataManager.getData(player.getUniqueId()).getOnlineMinutes() >= c.getAmount();
+                // 累计在线时长（分钟），与进度一致按 owner（玩家/队伍）归属统计
+                return data.getOnlineMinutes() >= c.getAmount();
             case HAS_ITEM:
                 return countItem(player, c.getItemMaterial(), c.getItemData()) >= c.getAmount();
             case TIME:
@@ -448,7 +448,7 @@ public class RewardManager {
 
     private void giveMoney(Player player, double amount) {
         if (plugin.getEconomy() == null) {
-            player.sendMessage(messageManager.get("warn-no-vault"));
+            player.sendMessage(messageManager.get("soysmyloot.command.warn.no-vault"));
             return;
         }
         plugin.getEconomy().depositPlayer(player, amount);
@@ -456,7 +456,7 @@ public class RewardManager {
 
     private void givePoints(Player player, double amount) {
         if (plugin.getPlayerPoints() == null) {
-            player.sendMessage(messageManager.get("warn-no-playerpoints"));
+            player.sendMessage(messageManager.get("soysmyloot.command.warn.no-playerpoints"));
             return;
         }
         plugin.getPlayerPoints().give(player.getUniqueId(), (int) amount);

@@ -145,11 +145,24 @@ public class RewardEntry {
     /** 随机奖励池每次抽取数量（默认 1） */
     private final int poolCount;
 
+    /** ERP 启用开关（YAML 缺省 = true），false 时不在 GUI/列表中展示 */
+    private final boolean enabled;
+
     public RewardEntry(String id, String name, String description, List<Condition> conditions,
                        boolean repeatable, long cooldown, List<ItemReward> items,
                        List<String> commands, double money, double points, List<String> messages,
                        String stage, List<String> requires, int dailyLimit, int weeklyLimit,
                        boolean partial, double per, boolean consume, List<String> pool, int poolCount) {
+        this(id, name, description, conditions, repeatable, cooldown, items, commands, money, points,
+                messages, stage, requires, dailyLimit, weeklyLimit, partial, per, consume, pool, poolCount, true);
+    }
+
+    public RewardEntry(String id, String name, String description, List<Condition> conditions,
+                       boolean repeatable, long cooldown, List<ItemReward> items,
+                       List<String> commands, double money, double points, List<String> messages,
+                       String stage, List<String> requires, int dailyLimit, int weeklyLimit,
+                       boolean partial, double per, boolean consume, List<String> pool, int poolCount,
+                       boolean enabled) {
         this.id = id;
         this.name = name;
         this.description = description;
@@ -170,6 +183,7 @@ public class RewardEntry {
         this.consume = consume;
         this.pool = pool;
         this.poolCount = poolCount;
+        this.enabled = enabled;
     }
 
     public String getId() {
@@ -250,5 +264,9 @@ public class RewardEntry {
 
     public int getPoolCount() {
         return poolCount;
+    }
+
+    public boolean isEnabled() {
+        return enabled;
     }
 }
