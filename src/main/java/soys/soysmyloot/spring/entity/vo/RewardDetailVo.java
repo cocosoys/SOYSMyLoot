@@ -33,4 +33,7 @@ public class RewardDetailVo {
     private Double money;
     private Double points;
     private List<String> messages;
+
+    /** 领取反馈（音效 + 粒子）；null = 该礼包未配置反馈 */
+    private RewardFeedbackVo feedback;
 }

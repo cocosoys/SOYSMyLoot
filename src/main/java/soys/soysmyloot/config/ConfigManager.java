@@ -37,15 +37,6 @@ public class ConfigManager {
     private boolean trackProjectile;
     private boolean trackIndirect;
 
-    // ---- 领取反馈（音效与粒子） ----
-    private boolean feedbackEnabled;
-    private String feedbackClaimSound;
-    private double feedbackSoundVolume;
-    private double feedbackSoundPitch;
-    private String feedbackClaimParticle;
-    private int feedbackParticleCount;
-    private double feedbackParticleOffset;
-
     // ---- 进度归属 / 世界隔离 ----
     private String scopeId;
     private boolean worldIsolation;
@@ -162,15 +153,6 @@ public class ConfigManager {
         if (hudUpdateTicks < 5) {
             hudUpdateTicks = 20;
         }
-
-        ConfigurationSection fb = rawConfig.getConfigurationSection("feedback");
-        feedbackEnabled = fb != null ? fb.getBoolean("enabled", true) : true;
-        feedbackClaimSound = fb != null ? fb.getString("claim-sound", "ENTITY_PLAYER_LEVELUP") : "ENTITY_PLAYER_LEVELUP";
-        feedbackSoundVolume = fb != null ? fb.getDouble("sound-volume", 1.0) : 1.0;
-        feedbackSoundPitch = fb != null ? fb.getDouble("sound-pitch", 1.0) : 1.0;
-        feedbackClaimParticle = fb != null ? fb.getString("claim-particle", "VILLAGER_HAPPY") : "VILLAGER_HAPPY";
-        feedbackParticleCount = fb != null ? fb.getInt("particle-count", 30) : 30;
-        feedbackParticleOffset = fb != null ? fb.getDouble("particle-offset", 0.6) : 0.6;
 
         ConfigurationSection lb = rawConfig.getConfigurationSection("leaderboard");
         leaderboardLimit = lb != null ? lb.getInt("limit", 10) : 10;
@@ -358,10 +340,24 @@ public class ConfigManager {
                         "rewards.yml -> 奖励 '" + id + "' 开启了 partial 但未设置有效的 per，将默认使用首个伤害/击杀条件 amount"));
             }
 
+            // ---- V7 领取反馈：按礼包配置，未配置 feedback 子节 = 不播放 ----
+            RewardEntry.Feedback feedback = null;
+            ConfigurationSection fb = r.getConfigurationSection("feedback");
+            if (fb != null) {
+                feedback = new RewardEntry.Feedback(
+                        fb.getBoolean("enabled", true),
+                        fb.getString("claim-sound", ""),
+                        (float) fb.getDouble("sound-volume", 1.0),
+                        (float) fb.getDouble("sound-pitch", 1.0),
+                        fb.getString("claim-particle", ""),
+                        Math.max(0, fb.getInt("particle-count", 30)),
+                        Math.max(0.0, fb.getDouble("particle-offset", 0.6)));
+            }
+
             rewards.put(id, new RewardEntry(id, name, desc, conditions, repeatable, cooldown,
                     items, commands, money, points, messagesList,
                     stage, requires, dailyLimit, weeklyLimit, partial, per, consume, pool, poolCount,
-                    enabled));
+                    enabled, feedback));
         }
     }
 
@@ -406,36 +402,6 @@ public class ConfigManager {
 
     public boolean isTrackIndirect() {
         return trackIndirect;
-    }
-
-    // ============ 领取反馈（音效与粒子） ============
-
-    public boolean isFeedbackEnabled() {
-        return feedbackEnabled;
-    }
-
-    public String getFeedbackClaimSound() {
-        return feedbackClaimSound;
-    }
-
-    public float getFeedbackSoundVolume() {
-        return (float) feedbackSoundVolume;
-    }
-
-    public float getFeedbackSoundPitch() {
-        return (float) feedbackSoundPitch;
-    }
-
-    public String getFeedbackClaimParticle() {
-        return feedbackClaimParticle;
-    }
-
-    public int getFeedbackParticleCount() {
-        return feedbackParticleCount;
-    }
-
-    public double getFeedbackParticleOffset() {
-        return feedbackParticleOffset;
     }
 
     // ============ 进度归属 / 世界隔离 ============

@@ -4,11 +4,14 @@ import com.github.cocosoys.mc.mcerp.ErpMenus;
 import com.github.cocosoys.mc.mcerp.McerpExpansion;
 import com.github.cocosoys.mc.soyshttpovermc.api.SoysHttpOverMcApi;
 import org.bukkit.plugin.Plugin;
+import soys.soysmyloot.SOYSMyLoot;
 import soys.soysmyloot.spring.controller.ClaimController;
+import soys.soysmyloot.spring.controller.ErpConfigController;
 import soys.soysmyloot.spring.controller.MonsterController;
 import soys.soysmyloot.spring.controller.RewardController;
 import soys.soysmyloot.spring.impl.ClaimServiceImpl;
 import soys.soysmyloot.spring.impl.MonsterServiceImpl;
+import soys.soysmyloot.spring.impl.MyLootConfigServiceImpl;
 import soys.soysmyloot.spring.impl.RewardServiceImpl;
 
 import java.util.ArrayList;
@@ -87,7 +90,14 @@ public final class SOYSMyLootErpExpansion extends McerpExpansion {
                 .orderNum(20)
                 .menu("claim", "领取记录", "form", ClaimController.class)
                 .perms("soysmyloot:erp:claim:list")
-                .orderNum(30);
+                .orderNum(30)
+                // 插件配置目录：必须用带 lambda 的 4 参 dir（无 lambda 重载压栈不弹栈，
+                // 会把后续菜单全嵌进目录）。叶子不写 component，由框架按 pageDirRoot 自动拼。
+                .dir("config", "插件配置", "edit", d -> d
+                        .menu("config", "核心配置", "input", ErpConfigController.class)
+                        .perms("soysmyloot:erp:config:list")
+                        .orderNum(10))
+                .orderNum(40);
     }
 
     /**
@@ -106,6 +116,9 @@ public final class SOYSMyLootErpExpansion extends McerpExpansion {
                     list.add(new RewardController(new RewardServiceImpl()));
                     list.add(new MonsterController(new MonsterServiceImpl()));
                     list.add(new ClaimController(new ClaimServiceImpl()));
+                    // 配置菜单控制器：构造注入 owner 实例，按 getDataFolder() 读写自己的 config.yml
+                    list.add(new ErpConfigController(new MyLootConfigServiceImpl(
+                            SOYSMyLoot.getPlugin(SOYSMyLoot.class))));
                     cachedControllers = list;
                 }
             }

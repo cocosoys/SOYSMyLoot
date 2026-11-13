@@ -5,8 +5,8 @@ import com.github.cocosoys.mc.soyshttpovermc.util.PageUtils;
 import com.github.cocosoys.mc.soyshttpovermc.util.TableDataInfo;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
-import org.bukkit.configuration.ConfigurationSection;
-import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.PlayerInventory;
@@ -16,7 +16,6 @@ import soys.soysmyloot.config.ConfigManager;
 import soys.soysmyloot.data.DataManager;
 import soys.soysmyloot.data.PlayerData;
 import soys.soysmyloot.model.RewardEntry;
-import soys.soysmyloot.reward.RewardManager;
 import soys.soysmyloot.spring.entity.po.CopyHandPo;
 import soys.soysmyloot.spring.entity.po.RewardGivePo;
 import soys.soysmyloot.spring.entity.po.RewardItemsSavePo;
@@ -25,23 +24,27 @@ import soys.soysmyloot.spring.entity.po.RewardSavePo;
 import soys.soysmyloot.spring.entity.po.RewardTogglePo;
 import soys.soysmyloot.spring.entity.vo.RewardConditionVo;
 import soys.soysmyloot.spring.entity.vo.RewardDetailVo;
+import soys.soysmyloot.spring.entity.vo.RewardFeedbackVo;
 import soys.soysmyloot.spring.entity.vo.RewardItemVo;
 import soys.soysmyloot.spring.entity.vo.RewardVo;
 import soys.soysmyloot.spring.service.RewardService;
+import soys.soysmyloot.spring.util.RewardsYamlPatcher;
 import soys.soysmyloot.spring.util.Sync;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import java.util.logging.Level;
 
 /**
- * 礼包管理业务实现：读走 ConfigManager 内存缓存，写直接覆写 rewards.yml 后热重载。
- * 不引入新存储，玩家领取记录经 DataManager 访问。
+ * 礼包管理业务实现：读走 ConfigManager 内存缓存，写用 {@link RewardsYamlPatcher} 做节级文本补丁。
+ *
+ * <p>V7 起不再用 {@code YamlConfiguration.save()} 全量覆写 rewards.yml —— 那会丢掉全部中文注释、
+ * 行内注释与块列表结构。现在只改动目标礼包节，文件其余字节不变。
+ * 领取反馈（音效/粒子）也随礼包保存在 {@code rewards.<id>.feedback} 子节。</p>
  */
 public class RewardServiceImpl implements RewardService {
 
@@ -138,6 +141,7 @@ public class RewardServiceImpl implements RewardService {
         d.setMoney(r.getMoney());
         d.setPoints(r.getPoints());
         d.setMessages(r.getMessages());
+        d.setFeedback(RewardFeedbackVo.of(r.getFeedback()));
 
         List<RewardConditionVo> conds = new ArrayList<>();
         if (r.getConditions() != null) {
@@ -178,12 +182,14 @@ public class RewardServiceImpl implements RewardService {
         if (po == null || po.getId() == null || po.getId().trim().isEmpty()) {
             return AjaxResult.error("id 不能为空");
         }
+        String invalid = validateFeedback(po.getFeedback());
+        if (invalid != null) {
+            return AjaxResult.error(invalid);
+        }
         try {
-            YamlConfiguration yml = loadRewardsYml();
-            String path = "rewards." + po.getId().trim();
-            writeRewardNode(yml, path, po);
-            saveRewardsYml(yml);
-            cfg().loadRewards();
+            File file = ensureRewardsFile();
+            RewardsYamlPatcher.write(file, po.getId().trim(), toNode(po));
+            reloadOnMain();
             return AjaxResult.success();
         } catch (Exception e) {
             plugin.getLogger().log(Level.SEVERE, "保存礼包失败: " + po.getId(), e);
@@ -197,10 +203,9 @@ public class RewardServiceImpl implements RewardService {
             return AjaxResult.error("id 不能为空");
         }
         try {
-            YamlConfiguration yml = loadRewardsYml();
-            yml.set("rewards." + id, null);
-            saveRewardsYml(yml);
-            cfg().loadRewards();
+            File file = ensureRewardsFile();
+            RewardsYamlPatcher.delete(file, id.trim());
+            reloadOnMain();
             return AjaxResult.success();
         } catch (Exception e) {
             return AjaxResult.error("删除失败: " + e.getMessage());
@@ -217,7 +222,7 @@ public class RewardServiceImpl implements RewardService {
             return AjaxResult.error("礼包不存在: " + po.getId());
         }
         RewardSavePo savePo = new RewardSavePo();
-        // 基于当前完整详情覆写，仅改 enabled
+        // 基于当前完整详情覆写，仅改 enabled；feedback 必须透传，否则会被清空
         RewardDetailVo cur = toDetail(r);
         savePo.setId(cur.getId());
         savePo.setName(cur.getName());
@@ -240,6 +245,7 @@ public class RewardServiceImpl implements RewardService {
         savePo.setMoney(cur.getMoney());
         savePo.setPoints(cur.getPoints());
         savePo.setMessages(cur.getMessages());
+        savePo.setFeedback(cur.getFeedback());
         return save(savePo);
     }
 
@@ -338,6 +344,7 @@ public class RewardServiceImpl implements RewardService {
         savePo.setMoney(cur.getMoney());
         savePo.setPoints(cur.getPoints());
         savePo.setMessages(cur.getMessages());
+        savePo.setFeedback(cur.getFeedback());
         return save(savePo);
     }
 
@@ -372,83 +379,143 @@ public class RewardServiceImpl implements RewardService {
         return AjaxResult.success(list);
     }
 
+    @Override
+    public AjaxResult feedbackOptions() {
+        Map<String, Object> data = new LinkedHashMap<>();
+        List<String> sounds = new ArrayList<>();
+        for (Sound s : Sound.values()) {
+            sounds.add(s.name());
+        }
+        List<String> particles = new ArrayList<>();
+        for (Particle p : Particle.values()) {
+            particles.add(p.name());
+        }
+        data.put("sounds", sounds);
+        data.put("particles", particles);
+        Map<String, Object> recommended = new LinkedHashMap<>();
+        recommended.put("enabled", true);
+        recommended.put("sound", "ENTITY_PLAYER_LEVELUP");
+        recommended.put("volume", 1.0);
+        recommended.put("pitch", 1.0);
+        recommended.put("particle", "VILLAGER_HAPPY");
+        recommended.put("count", 30);
+        recommended.put("offset", 0.6);
+        data.put("recommended", recommended);
+        return AjaxResult.success(data);
+    }
+
     // ================================================================
-    //  rewards.yml 读写
+    //  rewards.yml 节级文本补丁
     // ================================================================
 
     private File rewardsFile() {
         return new File(plugin.getDataFolder(), "rewards.yml");
     }
 
-    private YamlConfiguration loadRewardsYml() {
+    private File ensureRewardsFile() {
         File f = rewardsFile();
-        if (!f.exists()) {
+        if (!f.isFile()) {
             plugin.saveResource("rewards.yml", false);
         }
-        return YamlConfiguration.loadConfiguration(f);
+        return f;
     }
 
-    private void saveRewardsYml(YamlConfiguration yml) throws IOException {
-        yml.save(rewardsFile());
+    /** 配置重载回主线程，避免与 Bukkit 主线程上的读取并发竞争。 */
+    private void reloadOnMain() throws Exception {
+        Sync.onMain(plugin, () -> {
+            cfg().loadRewards();
+            return null;
+        });
     }
 
-    private void writeRewardNode(YamlConfiguration yml, String path, RewardSavePo po) {
-        yml.set(path + ".name", po.getName() == null ? po.getId() : po.getName());
-        yml.set(path + ".description", po.getDescription() == null ? "" : po.getDescription());
-        if (po.getStage() != null && !po.getStage().isEmpty()) {
-            yml.set(path + ".stage", po.getStage());
-        } else {
-            yml.set(path + ".stage", null);
+    /** 保存前校验 Sound / Particle 枚举名，避免写进无效值后只在 debug 日志里提示。 */
+    private String validateFeedback(RewardFeedbackVo fb) {
+        if (fb == null || !Boolean.TRUE.equals(fb.getEnabled())) {
+            return null;
         }
-        yml.set(path + ".enabled", po.getEnabled() == null || po.getEnabled());
-        yml.set(path + ".repeatable", po.getRepeatable() != null && po.getRepeatable());
-        yml.set(path + ".cooldown", po.getCooldown() == null ? 0L : po.getCooldown());
-        yml.set(path + ".daily-limit", po.getDailyLimit() == null ? 0 : po.getDailyLimit());
-        yml.set(path + ".weekly-limit", po.getWeeklyLimit() == null ? 0 : po.getWeeklyLimit());
-        yml.set(path + ".partial", po.getPartial() != null && po.getPartial());
+        String s = fb.getSound();
+        if (s != null && !s.trim().isEmpty()) {
+            try {
+                Sound.valueOf(s.trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                return "无效的音效名称: " + s;
+            }
+        }
+        String p = fb.getParticle();
+        if (p != null && !p.trim().isEmpty()) {
+            try {
+                Particle.valueOf(p.trim().toUpperCase());
+            } catch (IllegalArgumentException e) {
+                return "无效的粒子名称: " + p;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 把保存入参转成「相对礼包节的路径 -> 值」。
+     *
+     * <p>刻意不写 conditions：条件结构复杂且由手工编辑 rewards.yml 维护；
+     * rewards.items 仅在 saveItems 链路（po.items != null）时才写入，
+     * 普通「配置」对话框提交时不会触碰原物品块。</p>
+     */
+    private Map<String, Object> toNode(RewardSavePo po) {
+        Map<String, Object> n = new LinkedHashMap<>();
+        n.put("name", po.getName() == null ? po.getId() : po.getName());
+        n.put("description", po.getDescription() == null ? "" : po.getDescription());
+        n.put("stage", po.getStage() == null || po.getStage().isEmpty() ? null : po.getStage());
+        n.put("enabled", po.getEnabled() == null || po.getEnabled());
+        n.put("repeatable", po.getRepeatable() != null && po.getRepeatable());
+        n.put("cooldown", po.getCooldown() == null ? 0L : po.getCooldown());
+        n.put("daily-limit", po.getDailyLimit() == null ? 0 : po.getDailyLimit());
+        n.put("weekly-limit", po.getWeeklyLimit() == null ? 0 : po.getWeeklyLimit());
+        n.put("partial", po.getPartial() != null && po.getPartial());
         if (po.getPer() != null) {
-            yml.set(path + ".per", po.getPer());
+            n.put("per", po.getPer());
         }
-        yml.set(path + ".consume", po.getConsume() == null || po.getConsume());
+        n.put("consume", po.getConsume() == null || po.getConsume());
+        n.put("random-count", po.getPoolCount() == null ? 1 : Math.max(1, po.getPoolCount()));
+        n.put("requires", po.getRequires() == null ? Collections.emptyList() : po.getRequires());
+        n.put("random-pool", po.getPool() == null ? Collections.emptyList() : po.getPool());
+        n.put("rewards.commands", po.getCommands() == null ? Collections.emptyList() : po.getCommands());
+        n.put("rewards.messages", po.getMessages() == null ? Collections.emptyList() : po.getMessages());
+        n.put("rewards.money", po.getMoney() == null ? 0 : po.getMoney());
+        n.put("rewards.points", po.getPoints() == null ? 0 : po.getPoints());
 
-        // 条件
-        yml.set(path + ".conditions", null);
-        if (po.getConditions() != null) {
-            int i = 0;
-            for (RewardConditionVo c : po.getConditions()) {
-                String cp = path + ".conditions.c" + (i++);
-                yml.set(cp + ".type", c.getType());
-                if (c.getMonsterId() != null) yml.set(cp + ".monster", c.getMonsterId());
-                if (c.getAmount() != null) yml.set(cp + ".amount", c.getAmount());
-                if (c.getMaterial() != null) yml.set(cp + ".material", c.getMaterial());
-                if (c.getData() != null) yml.set(cp + ".data", c.getData());
-                if (c.getStartMinOfDay() != null) yml.set(cp + ".start", c.getStartMinOfDay());
-                if (c.getEndMinOfDay() != null) yml.set(cp + ".end", c.getEndMinOfDay());
-                if (c.getDays() != null) yml.set(cp + ".days", c.getDays());
-            }
-        }
-
-        // 前置/随机池
-        yml.set(path + ".requires", po.getRequires());
-        yml.set(path + ".random-pool", po.getPool());
-        yml.set(path + ".random-count", po.getPoolCount() == null ? 1 : po.getPoolCount());
-
-        // 物品
-        yml.set(path + ".rewards.items", null);
         if (po.getItems() != null) {
-            int i = 0;
+            List<Map<String, Object>> items = new ArrayList<>();
             for (RewardItemVo it : po.getItems()) {
-                String ip = path + ".rewards.items.i" + (i++);
-                yml.set(ip + ".material", it.getMaterial());
-                yml.set(ip + ".amount", it.getAmount() == null ? 1 : it.getAmount());
-                if (it.getName() != null) yml.set(ip + ".name", it.getName());
-                if (it.getLore() != null) yml.set(ip + ".lore", it.getLore());
+                Map<String, Object> m = new LinkedHashMap<>();
+                m.put("material", it.getMaterial() == null ? "STONE" : it.getMaterial());
+                m.put("amount", it.getAmount() == null ? 1 : it.getAmount());
+                if (it.getName() != null && !it.getName().isEmpty()) {
+                    m.put("name", it.getName());
+                }
+                if (it.getLore() != null && !it.getLore().isEmpty()) {
+                    m.put("lore", it.getLore());
+                }
+                items.add(m);
             }
+            n.put("rewards.items", items);
         }
 
-        yml.set(path + ".rewards.commands", po.getCommands());
-        yml.set(path + ".rewards.money", po.getMoney() == null ? 0 : po.getMoney());
-        yml.set(path + ".rewards.points", po.getPoints() == null ? 0 : po.getPoints());
-        yml.set(path + ".rewards.messages", po.getMessages());
+        n.put("feedback", feedbackNode(po.getFeedback()));
+        return n;
+    }
+
+    /** null = 删除该礼包的 feedback 子节（不播放任何反馈）。 */
+    private Map<String, Object> feedbackNode(RewardFeedbackVo fb) {
+        if (fb == null || !Boolean.TRUE.equals(fb.getEnabled())) {
+            return null;
+        }
+        Map<String, Object> m = new LinkedHashMap<>();
+        m.put("enabled", true);
+        m.put("claim-sound", fb.getSound() == null ? "" : fb.getSound().trim());
+        m.put("sound-volume", fb.getVolume() == null ? 1.0 : fb.getVolume());
+        m.put("sound-pitch", fb.getPitch() == null ? 1.0 : fb.getPitch());
+        m.put("claim-particle", fb.getParticle() == null ? "" : fb.getParticle().trim());
+        m.put("particle-count", fb.getCount() == null ? 30 : Math.max(0, fb.getCount()));
+        m.put("particle-offset", fb.getOffset() == null ? 0.6 : Math.max(0.0, fb.getOffset()));
+        return m;
     }
 }

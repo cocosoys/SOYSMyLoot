@@ -43,4 +43,7 @@ public interface RewardService {
 
     /** 从在线玩家背包拷贝物品 */
     AjaxResult copyHand(CopyHandPo po);
+
+    /** 领取反馈枚举候选（Spigot 1.12.2 的 Sound / Particle 名称） */
+    AjaxResult feedbackOptions();
 }

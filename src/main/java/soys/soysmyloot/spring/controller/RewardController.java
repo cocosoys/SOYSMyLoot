@@ -102,4 +102,11 @@ public class RewardController {
     public AjaxResult copyHand(@RequestBody CopyHandPo po) {
         return rewardService.copyHand(po);
     }
+
+    @ApiName("领取反馈枚举候选")
+    @ApiPermission("soysmyloot:erp:reward:list")
+    @GetMapping("/feedback-options")
+    public AjaxResult feedbackOptions() {
+        return rewardService.feedbackOptions();
+    }
 }

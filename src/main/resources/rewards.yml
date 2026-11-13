@@ -24,6 +24,9 @@
 #   consume      部分领取是否消耗进度（默认 true）
 #   random-pool  随机奖励池（奖励 ID 列表），领取时随机抽取
 #   random-count 随机池每次抽取数量（默认 1）
+#   feedback     领取反馈（音效 + 粒子），按礼包独立配置；不写本节 = 不播放
+#                  enabled / claim-sound / sound-volume / sound-pitch /
+#                  claim-particle / particle-count / particle-offset
 
 rewards:
   # ---------- 基础示例：伤害 + 击杀 ----------

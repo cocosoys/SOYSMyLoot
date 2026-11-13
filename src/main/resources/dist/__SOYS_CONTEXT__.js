@@ -12,4 +12,7 @@ window.SOYS_CONTEXT = typeof __SOYS_CONTEXT__ !== 'undefined' ? __SOYS_CONTEXT__
 // HTML 资源引用改写排除列表（前缀匹配）：
 // /api 为 SOYS API 保留前缀（默认已排除）；/prod-api 为应用 API 前缀，必须显式声明，
 // 避免 index.html 中的 API 请求被改写为插件资源路径。
-window.SOYS_CONTEXT_EXCLUDES = ["/prod-api", "/api"];
+// /common 与 /soys-auth.js 是 MCERP 宿主提供的共享基础库（vue / vuex / vue-router /
+// element-ui）与鉴权脚本，index.html 以绝对路径引用；若不排除，ContractInjector 会把它们
+// 按 owner 插件名改写成 /web/plugins/<owner>/common/... → 404 → 子应用白屏。
+window.SOYS_CONTEXT_EXCLUDES = ["/prod-api", "/api", "/common", "/soys-auth.js"];

@@ -2,6 +2,7 @@ package soys.soysmyloot.spring.entity.po;
 
 import lombok.Data;
 import soys.soysmyloot.spring.entity.vo.RewardConditionVo;
+import soys.soysmyloot.spring.entity.vo.RewardFeedbackVo;
 import soys.soysmyloot.spring.entity.vo.RewardItemVo;
 
 import java.util.List;
@@ -35,4 +36,7 @@ public class RewardSavePo {
     private Double money;
     private Double points;
     private List<String> messages;
+
+    /** 领取反馈（音效 + 粒子）；enabled=false 或 null 表示删除该礼包的反馈配置 */
+    private RewardFeedbackVo feedback;
 }

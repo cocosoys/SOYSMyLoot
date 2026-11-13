@@ -315,8 +315,8 @@ public class RewardManager {
             data.addWeeklyClaim(reward.getId(), now);
         }
 
-        // 领取成功反馈（音效 + 粒子）
-        playFeedback(player);
+        // 领取成功反馈（音效 + 粒子）：按当前礼包配置
+        playFeedback(player, reward);
 
         return true;
     }
@@ -346,47 +346,51 @@ public class RewardManager {
             }
         }
 
-        // 代发成功反馈（音效 + 粒子）
-        playFeedback(player);
+        // 代发成功反馈（音效 + 粒子）：按被代发的礼包配置
+        playFeedback(player, reward);
     }
 
     /**
      * 播放领取成功反馈（音效 + 粒子）。
-     * 音效/粒子名称从 config.yml 的 feedback 节读取，无效名称在 debug 模式下输出警告。
+     *
+     * <p>V7 起配置粒度从 config.yml 的全局 feedback 节改为
+     * {@code rewards.yml} 中每个礼包的 {@code feedback} 子节：
+     * 未配置该子节（{@link RewardEntry#getFeedback()} 为 null）或 enabled=false 时不播放。
      * 音效仅玩家本人可闻；粒子在玩家位置生成，周围玩家可见。
+     * 随机奖励池抽出的模板走 issueEffects()，不单独播放反馈。</p>
      */
-    private void playFeedback(Player player) {
+    private void playFeedback(Player player, RewardEntry reward) {
         ConfigManager config = plugin.getConfigManager();
-        if (!config.isFeedbackEnabled()) {
+        RewardEntry.Feedback fb = reward == null ? null : reward.getFeedback();
+        if (fb == null || !fb.isEnabled()) {
             return;
         }
 
         // 播放音效
-        String soundName = config.getFeedbackClaimSound();
+        String soundName = fb.getSound();
         if (soundName != null && !soundName.trim().isEmpty()) {
             try {
-                Sound sound = Sound.valueOf(soundName);
-                player.playSound(player.getLocation(), sound,
-                        config.getFeedbackSoundVolume(), config.getFeedbackSoundPitch());
+                Sound sound = Sound.valueOf(soundName.trim().toUpperCase());
+                player.playSound(player.getLocation(), sound, fb.getVolume(), fb.getPitch());
             } catch (IllegalArgumentException e) {
                 if (config.isDebug()) {
-                    plugin.getLogger().warning("[反馈] 无效的音效名称: " + soundName);
+                    plugin.getLogger().warning("[反馈] 礼包 '" + reward.getId() + "' 的音效名称无效: " + soundName);
                 }
             }
         }
 
         // 播放粒子
-        String particleName = config.getFeedbackClaimParticle();
+        String particleName = fb.getParticle();
         if (particleName != null && !particleName.trim().isEmpty()) {
             try {
-                Particle particle = Particle.valueOf(particleName);
+                Particle particle = Particle.valueOf(particleName.trim().toUpperCase());
                 Location loc = player.getLocation().add(0, 1.0, 0);
-                double offset = config.getFeedbackParticleOffset();
+                double offset = fb.getOffset();
                 player.getWorld().spawnParticle(particle, loc,
-                        config.getFeedbackParticleCount(), offset, offset, offset);
+                        Math.max(0, fb.getCount()), offset, offset, offset);
             } catch (IllegalArgumentException e) {
                 if (config.isDebug()) {
-                    plugin.getLogger().warning("[反馈] 无效的粒子名称: " + particleName);
+                    plugin.getLogger().warning("[反馈] 礼包 '" + reward.getId() + "' 的粒子名称无效: " + particleName);
                 }
             }
         }
