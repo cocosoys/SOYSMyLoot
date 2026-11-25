@@ -17,7 +17,7 @@ package soys.soysmyloot.spring.entity;
 public enum MyLootConfigFile {
 
     CONFIG("config", "核心配置", "config.yml",
-            "调试模式、追踪归属、防作弊、进度 HUD、领取反馈、数据存储、排行榜、赛季、ERP 基地址");
+            "调试模式、追踪归属、防作弊、进度 HUD、数据存储、排行榜、赛季、ERP 基地址");
 
     private final String id;
     private final String name;
